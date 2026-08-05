@@ -13,7 +13,7 @@ class OllamaLLMProvider(BaseLLMProvider):
     def provider_name(self) -> str:
         return f"Local Ollama ({self.model_name})"
 
-    def generate_answer(self, system_prompt: str, user_prompt: str) -> str:
+    def generate_answer(self, system_prompt: str, user_prompt: str, api_key: str = None, images: list = None, **kwargs) -> str:
         url = f"{self.host.rstrip('/')}/api/chat"
         payload = {
             "model": self.model_name,
