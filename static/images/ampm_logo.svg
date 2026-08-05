@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 250" width="100%" height="100%">
+  <defs>
+    <linearGradient id="outerRing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5B76C5"/>
+      <stop offset="50%" stop-color="#1A255B"/>
+      <stop offset="100%" stop-color="#0B0F28"/>
+    </linearGradient>
+    <linearGradient id="blueWave" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3446AA"/>
+      <stop offset="60%" stop-color="#1F2A7A"/>
+      <stop offset="100%" stop-color="#0E1442"/>
+    </linearGradient>
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Outer Ring -->
+  <ellipse cx="250" cy="125" rx="240" ry="115" fill="none" stroke="url(#outerRing)" stroke-width="10" filter="url(#dropShadow)"/>
+  <ellipse cx="250" cy="125" rx="232" ry="107" fill="#0A0D23"/>
+
+  <!-- Left White Fill -->
+  <ellipse cx="250" cy="125" rx="228" ry="103" fill="#FFFFFF"/>
+
+  <!-- Right Blue S-Curve Fill -->
+  <path d="M 230,22 C 340,30 180,180 320,227 A 228,103 0 0 0 478,125 A 228,103 0 0 0 230,22 Z" fill="url(#blueWave)"/>
+
+  <!-- AM Text -->
+  <text x="65" y="155" font-family="'Arial Black', 'Impact', 'Trebuchet MS', sans-serif" font-weight="900" font-style="italic" font-size="96" fill="#0B0E28" letter-spacing="-3">AM</text>
+
+  <!-- PM Text -->
+  <text x="260" y="155" font-family="'Arial Black', 'Impact', 'Trebuchet MS', sans-serif" font-weight="900" font-style="italic" font-size="96" fill="#FFFFFF" letter-spacing="-3">PM</text>
+</svg>

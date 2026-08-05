@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AMPM Service POS Troubleshooting Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- Sidebar Control Panel -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo-wrap">
+          <img src="/static/images/ampm_logo.svg" alt="AMPM Logo" class="ampm-brand-logo">
+        </div>
+        <div>
+          <div class="brand-title">AMPM Service</div>
+          <div class="brand-subtitle">POS TROUBLESHOOTING AI</div>
+        </div>
+      </div>
+
+      <!-- LLM Provider Selector -->
+      <div class="sidebar-section">
+        <label class="section-label" for="providerSelect">LLM Provider</label>
+        <select id="providerSelect" class="select-control">
+          <option value="gemini" selected>Google Gemini 2.5 Flash</option>
+          <option value="groq">Groq API (Llama-3.3)</option>
+          <option value="ollama">Ollama (Local Server)</option>
+        </select>
+      </div>
+
+      <!-- API Key Settings Collapsible Section -->
+      <div class="sidebar-section">
+        <button type="button" id="toggleApiKeyAccordion" class="accordion-header-btn">
+          <div class="accordion-title-flex">
+            <span class="settings-gear-icon">⚙️</span>
+            <span class="section-label-text">API KEY SETTINGS</span>
+          </div>
+          <div class="accordion-right-flex">
+            <span id="keyStatusBadge" class="key-status-badge">Server Default</span>
+            <span id="accordionChevron" class="accordion-chevron">▼</span>
+          </div>
+        </button>
+
+        <div id="apiKeyCollapseContent" class="accordion-content hidden">
+          <div class="key-input-group">
+            <input type="password" id="geminiKeyInput" class="input-control" placeholder="Gemini API Key (AIzaSy...)" autocomplete="off">
+            <button type="button" class="icon-toggle-btn" id="toggleGeminiKey" title="Show/Hide Key">👁️</button>
+          </div>
+          <div class="key-input-group" style="margin-top: 0.5rem;">
+            <input type="password" id="groqKeyInput" class="input-control" placeholder="Groq API Key (gsk_...)" autocomplete="off">
+            <button type="button" class="icon-toggle-btn" id="toggleGroqKey" title="Show/Hide Key">👁️</button>
+          </div>
+          <button type="button" id="saveKeysBtn" class="save-keys-btn">Save Local API Keys</button>
+        </div>
+      </div>
+
+      <!-- Category Filter -->
+      <div class="sidebar-section">
+        <label class="section-label" for="categorySelect">Equipment Category Filter</label>
+        <select id="categorySelect" class="select-control">
+          <option value="" selected>All Documentation</option>
+          <option value="Verifone Hardware">Verifone Hardware (M400)</option>
+          <option value="Buypass Config">Buypass / Fiserv Payment</option>
+          <option value="SMS Software">LOC Software SMS POS</option>
+          <option value="Server Config">Master Server Config</option>
+          <option value="Network / Connectivity">Network & Connectivity</option>
+        </select>
+      </div>
+
+      <!-- Knowledge Base Statistics -->
+      <div class="sidebar-section">
+        <label class="section-label">Vector Store Status</label>
+        <div class="stats-card">
+          <div class="stat-item">
+            <span>Vector Chunks:</span>
+            <span id="statChunks" class="stat-val">...</span>
+          </div>
+          <div class="stat-item">
+            <span>Collection:</span>
+            <span id="statDocs" class="stat-val">ampm_pos_docs</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PDF Ingestion Drag and Drop -->
+      <div class="sidebar-section">
+        <label class="section-label">Ingest PDF Documentation</label>
+        <div class="upload-zone" id="uploadZone">
+          <div class="upload-icon">📁</div>
+          <div class="upload-text"><strong>Drag & Drop PDFs</strong> or click to browse files</div>
+          <input type="file" id="fileInput" accept=".pdf" multiple style="display: none;">
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Chat Workspace -->
+    <main class="main-content">
+      <header class="chat-header">
+        <div class="chat-header-title">SMS Knowledge Base</div>
+        <div class="status-badge">
+          <span class="status-dot"></span>
+          System Online
+        </div>
+      </header>
+
+      <!-- Message History Container -->
+      <div class="messages-container" id="messagesContainer">
+        <div class="message-row assistant">
+          <div class="message-avatar">AI</div>
+          <div class="message-bubble">
+            Hello! I am your <strong>AMPM Service POS Troubleshooting Assistant</strong>.<br><br>
+            Describe a symptom on a register, PIN pad, or server (e.g. <em>"M400 cash-back 10x error"</em> or <em>"Buypass error 91 host timeout"</em>) and I will provide fast, cited instructions pulled directly from internal documentation.
+          </div>
+        </div>
+      </div>
+
+      <!-- Input Bar -->
+      <div class="chat-input-container">
+        <!-- Attachments Preview Container -->
+        <div id="attachmentsPreviewContainer" class="attachments-preview-container hidden"></div>
+
+        <form class="chat-form" id="chatForm">
+          <button type="button" id="attachBtn" class="attach-btn" title="Attach file or image (or Ctrl+V to paste screenshot)">
+            📎
+          </button>
+          <input type="file" id="promptFileInput" multiple accept="image/*,.png,.jpg,.jpeg,.webp,.pdf,.txt,.log" style="display: none;">
+          
+          <input type="text" id="chatInput" class="chat-input" placeholder="Describe register/server symptom or paste screenshot (Ctrl+V)..." autocomplete="off">
+          <button type="submit" class="send-btn" id="sendBtn">
+            <span>Ask AI</span>
+            <span>➔</span>
+          </button>
+        </form>
+      </div>
+    </main>
+
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
