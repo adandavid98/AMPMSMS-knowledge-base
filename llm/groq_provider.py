@@ -15,7 +15,7 @@ class GroqLLMProvider(BaseLLMProvider):
     def provider_name(self) -> str:
         return "Groq API"
 
-    def generate_answer(self, system_prompt: str, user_prompt: str, api_key: str = None) -> str:
+    def generate_answer(self, system_prompt: str, user_prompt: str, api_key: str = None, images: list = None, **kwargs) -> str:
         active_key = api_key or self.api_key
         if not active_key:
             return "[Error: GROQ_API_KEY missing. Please set your key in the Web UI sidebar or .env file.]"
