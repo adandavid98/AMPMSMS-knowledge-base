@@ -327,7 +327,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/stats');
             if (res.ok) {
                 const data = await res.json();
-                statChunks.textContent = data.total_chunks;
+                statChunks.textContent = data.total_documents;
                 statDocs.textContent = data.collection_name;
             }
         } catch (e) {
