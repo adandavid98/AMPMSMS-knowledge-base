@@ -1,10 +1,11 @@
+import re
 from typing import List, Dict, Any
 from supabase import create_client, Client
 import config
 from .embeddings import GeminiEmbeddingFunction
 
 class SupabaseVectorStore:
-    """Manages cloud vector database operations in Supabase pgvector."""
+    """Manages cloud vector database operations in Supabase pgvector with hybrid search."""
 
     def __init__(self, url: str = None, key: str = None, table_name: str = "documents"):
         self.url = url or config.SUPABASE_URL
@@ -25,7 +26,6 @@ class SupabaseVectorStore:
         if not chunks:
             return 0
 
-        # Generate embeddings for text batch
         texts = [chunk["text"] for chunk in chunks]
         embeddings = self.embedding_fn(texts)
 
@@ -44,7 +44,6 @@ class SupabaseVectorStore:
                 "embedding": vec
             })
 
-        # Upsert records in batches of 50
         batch_size = 50
         total_upserted = 0
 
@@ -56,48 +55,78 @@ class SupabaseVectorStore:
 
         return total_upserted
 
-    def search(self, query: str, top_k: int = 5, category_filter: str = None) -> List[Dict[str, Any]]:
+    def search(self, query: str, top_k: int = 6, category_filter: str = None) -> List[Dict[str, Any]]:
         """
-        Executes RPC cosine similarity search in Supabase pgvector.
+        Executes hybrid search (vector similarity + keyword matching + score re-ranking) in Supabase.
         """
-        # Embed query text
+        # 1. Embed query text for vector search
         raw_query_emb = self.embedding_fn.embed_query(query)
         if isinstance(raw_query_emb, list) and len(raw_query_emb) > 0:
             query_vec = raw_query_emb[0]
         else:
             query_vec = raw_query_emb
 
-        # Convert numpy array to float list for JSON serialization
         if hasattr(query_vec, "tolist"):
             query_vec = query_vec.tolist()
         else:
             query_vec = [float(x) for x in query_vec]
 
         filter_json = {}
-        if category_filter and category_filter != "General":
+        if category_filter and category_filter not in ["General", "All Documentation", ""]:
             filter_json = {"category": category_filter}
 
-        # Invoke match_documents RPC function
+        combined_matches: Dict[str, Dict[str, Any]] = {}
+
+        # 2. Vector Similarity Search (Fetch top 15 candidates)
         try:
             res = self.client.rpc("match_documents", {
                 "query_embedding": query_vec,
-                "match_count": top_k,
+                "match_count": 15,
                 "filter": filter_json
             }).execute()
 
-            matches = []
             if res.data:
                 for row in res.data:
-                    matches.append({
-                        "id": row.get("id"),
+                    c_id = row.get("id")
+                    sim = float(row.get("similarity", 0.0))
+                    combined_matches[c_id] = {
+                        "id": c_id,
                         "text": row.get("text"),
                         "metadata": row.get("metadata", {}),
-                        "distance": 1.0 - float(row.get("similarity", 0.0))
-                    })
-            return matches
+                        "score": sim,
+                        "distance": 1.0 - sim
+                    }
         except Exception as e:
-            print(f"[Error] Supabase RPC match_documents search failed: {e}")
-            return []
+            print(f"[Warning] Vector search error: {e}")
+
+        # 3. Exact Keyword Search (Extract filenames, .ini, error numbers)
+        keywords = re.findall(r'[A-Za-z0-9_\-\.]{3,}', query)
+        important_terms = [kw.lower() for kw in keywords if len(kw) >= 4 or '.ini' in kw.lower() or kw.isdigit()]
+
+        if important_terms:
+            try:
+                # Search Supabase text column for key terms
+                term = important_terms[0]
+                kw_res = self.client.table(self.table_name).select("id, text, metadata").ilike("text", f"%{term}%").limit(10).execute()
+                if kw_res.data:
+                    for row in kw_res.data:
+                        c_id = row.get("id")
+                        if c_id in combined_matches:
+                            combined_matches[c_id]["score"] += 0.3  # Boost existing candidate
+                        else:
+                            combined_matches[c_id] = {
+                                "id": c_id,
+                                "text": row.get("text"),
+                                "metadata": row.get("metadata", {}),
+                                "score": 0.5,
+                                "distance": 0.5
+                            }
+            except Exception as e:
+                print(f"[Warning] Keyword search error: {e}")
+
+        # 4. Rerank & Sort Candidates
+        sorted_chunks = sorted(combined_matches.values(), key=lambda x: x["score"], reverse=True)
+        return sorted_chunks[:top_k]
 
     def count(self) -> int:
         """Returns total document count in Supabase table."""
