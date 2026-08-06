@@ -38,7 +38,8 @@ class TextChunker:
                         "page_number": page["page_number"],
                         "total_pages": page["total_pages"],
                         "category": category,
-                        "chunk_index": idx + 1
+                        "chunk_index": idx + 1,
+                        "topic_title": page.get("topic_title", "")  # CHM topic title (blank for PDFs)
                     }
                 })
 
