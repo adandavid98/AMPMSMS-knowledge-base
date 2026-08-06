@@ -28,8 +28,25 @@ body {
   background-color: var(--bg-dark);
   color: var(--text-main);
   height: 100vh;
+  height: 100dvh;
   display: flex;
   overflow: hidden;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 /* App Container Layout */
@@ -37,6 +54,8 @@ body {
   display: flex;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 /* Sidebar Styling */
@@ -46,9 +65,13 @@ body {
   border-right: 1px solid var(--panel-border);
   display: flex;
   flex-direction: column;
-  padding: 1.5rem;
-  gap: 1.5rem;
+  padding: 1.25rem;
+  gap: 1.25rem;
   z-index: 10;
+  overflow-y: auto;
+  max-height: 100vh;
+  max-height: 100dvh;
+  flex-shrink: 0;
 }
 
 .brand {
@@ -295,8 +318,11 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   background-color: var(--bg-dark);
   position: relative;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .chat-header {
@@ -307,6 +333,7 @@ body {
   align-items: center;
   background: var(--glass-bg);
   backdrop-filter: blur(12px);
+  flex-shrink: 0;
 }
 
 .chat-header-title {
@@ -339,11 +366,13 @@ body {
 .messages-container {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 2rem;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
   scroll-behavior: smooth;
+  min-height: 0;
 }
 
 .message-row {
@@ -385,6 +414,9 @@ body {
   border-radius: var(--radius);
   line-height: 1.6;
   font-size: 0.95rem;
+  max-width: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .message-row.user .message-bubble {
@@ -602,3 +634,39 @@ body {
   0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
   40% { transform: scale(1); opacity: 1; }
 }
+
+/* Responsive Breakpoints & High Zoom Support */
+@media (max-width: 900px) {
+  :root {
+    --sidebar-width: 260px;
+  }
+  .sidebar {
+    padding: 1rem;
+    gap: 1rem;
+  }
+  .chat-header {
+    padding: 1rem 1.25rem;
+  }
+  .messages-container {
+    padding: 1.25rem;
+  }
+  .chat-input-container {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 680px) {
+  .app-container {
+    flex-direction: column;
+  }
+  .sidebar {
+    width: 100%;
+    max-height: 220px;
+    border-right: none;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .message-row {
+    max-width: 95%;
+  }
+}
+
