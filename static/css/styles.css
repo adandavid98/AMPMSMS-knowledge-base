@@ -65,12 +65,19 @@ body {
   border-right: 1px solid var(--panel-border);
   display: flex;
   flex-direction: column;
-  padding: 1.25rem;
+  padding: 1.25rem 1.25rem 2rem 1.25rem;
   gap: 1.25rem;
   z-index: 10;
   overflow-y: auto;
   max-height: 100vh;
   max-height: 100dvh;
+  flex-shrink: 0;
+}
+
+.sidebar::after {
+  content: '';
+  display: block;
+  height: 1.5rem;
   flex-shrink: 0;
 }
 
@@ -289,11 +296,12 @@ body {
 .upload-zone {
   border: 2px dashed var(--panel-border);
   border-radius: var(--radius);
-  padding: 1.2rem;
+  padding: 1.5rem 1rem;
   text-align: center;
   cursor: pointer;
   transition: var(--transition);
   background: rgba(255, 255, 255, 0.01);
+  margin-bottom: 0.5rem;
 }
 
 .upload-zone:hover, .upload-zone.dragover {
