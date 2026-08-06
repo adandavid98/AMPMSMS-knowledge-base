@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,10 +11,11 @@
   <link rel="stylesheet" href="/static/css/styles.css">
   <link rel="stylesheet" href="css/styles.css">
 </head>
+
 <body>
 
   <div class="app-container">
-    
+
     <!-- Sidebar Control Panel -->
     <aside class="sidebar">
       <div class="brand">
@@ -51,11 +53,13 @@
 
         <div id="apiKeyCollapseContent" class="accordion-content hidden">
           <div class="key-input-group">
-            <input type="password" id="geminiKeyInput" class="input-control" placeholder="Gemini API Key (AIzaSy...)" autocomplete="off">
+            <input type="password" id="geminiKeyInput" class="input-control" placeholder="Gemini API Key (AIzaSy...)"
+              autocomplete="off">
             <button type="button" class="icon-toggle-btn" id="toggleGeminiKey" title="Show/Hide Key">👁️</button>
           </div>
           <div class="key-input-group" style="margin-top: 0.5rem;">
-            <input type="password" id="groqKeyInput" class="input-control" placeholder="Groq API Key (gsk_...)" autocomplete="off">
+            <input type="password" id="groqKeyInput" class="input-control" placeholder="Groq API Key (gsk_...)"
+              autocomplete="off">
             <button type="button" class="icon-toggle-btn" id="toggleGroqKey" title="Show/Hide Key">👁️</button>
           </div>
           <button type="button" id="saveKeysBtn" class="save-keys-btn">Save Local API Keys</button>
@@ -117,7 +121,9 @@
           <div class="message-avatar">AI</div>
           <div class="message-bubble">
             Hello! I am your <strong>AMPM Service POS Troubleshooting Assistant</strong>.<br><br>
-            Describe a symptom on a register, PIN pad, or server (e.g. <em>"M400 cash-back 10x error"</em> or <em>"Buypass error 91 host timeout"</em>) and I will provide fast, cited instructions pulled directly from internal documentation.
+            Describe a symptom on a register, PIN pad, or server (e.g. <em>"M400 cash-back 10x error"</em> or
+            <em>"Buypass error 91 host timeout"</em>) and I will provide fast, cited instructions pulled directly from
+            internal documentation.
           </div>
         </div>
       </div>
@@ -128,12 +134,15 @@
         <div id="attachmentsPreviewContainer" class="attachments-preview-container hidden"></div>
 
         <form class="chat-form" id="chatForm">
-          <button type="button" id="attachBtn" class="attach-btn" title="Attach file or image (or Ctrl+V to paste screenshot)">
+          <button type="button" id="attachBtn" class="attach-btn"
+            title="Attach file or image (or Ctrl+V to paste screenshot)">
             📎
           </button>
-          <input type="file" id="promptFileInput" multiple accept="image/*,.png,.jpg,.jpeg,.webp,.pdf,.txt,.log" style="display: none;">
-          
-          <input type="text" id="chatInput" class="chat-input" placeholder="Describe register/server symptom or paste screenshot (Ctrl+V)..." autocomplete="off">
+          <input type="file" id="promptFileInput" multiple accept="image/*,.png,.jpg,.jpeg,.webp,.pdf,.txt,.log"
+            style="display: none;">
+
+          <input type="text" id="chatInput" class="chat-input"
+            placeholder="Describe register/server symptom or paste screenshot (Ctrl+V)..." autocomplete="off">
           <button type="submit" class="send-btn" id="sendBtn">
             <span>Send</span>
             <span>➔</span>
@@ -146,4 +155,5 @@
 
   <script src="/static/js/app.js"></script>
 </body>
+
 </html>
