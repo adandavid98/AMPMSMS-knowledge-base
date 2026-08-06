@@ -105,9 +105,18 @@ class SupabaseVectorStore:
 
         if important_terms:
             try:
-                # Search Supabase text column for key terms
-                term = important_terms[0]
-                kw_res = self.client.table(self.table_name).select("id, text, metadata").ilike("text", f"%{term}%").limit(10).execute()
+                # Search Supabase text column for the exact phrase first
+                exact_phrase = query.strip()
+                kw_res = self.client.table(self.table_name).select("id, text, metadata").ilike("text", f"%{exact_phrase}%").limit(10).execute()
+                
+                # If exact phrase not found, fall back ONLY to highly specific technical terms
+                # (e.g. error codes, filenames like .ini, or specific models like M400)
+                if not kw_res.data and len(important_terms) > 0:
+                     technical_terms = [t for t in important_terms if '.' in t or any(char.isdigit() for char in t) or t.isupper()]
+                     if technical_terms:
+                         term = technical_terms[0]
+                         kw_res = self.client.table(self.table_name).select("id, text, metadata").ilike("text", f"%{term}%").limit(10).execute()
+
                 if kw_res.data:
                     for row in kw_res.data:
                         c_id = row.get("id")
