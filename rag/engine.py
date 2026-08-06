@@ -182,19 +182,28 @@ class RAGEngine:
             meta = match.get("metadata", {})
             file_name = meta.get("file_name", "Unknown")
             page_num = meta.get("page_number", "?")
+            topic_title = meta.get("topic_title", "").strip()
             cat = meta.get("category", "General")
 
+            # For CHM files, use the topic title as the reference. For PDFs, use page number.
+            if topic_title:
+                location_ref = f"Topic: {topic_title}"
+            else:
+                location_ref = f"Page: {page_num}"
+
             context_blocks.append(
-                f"--- [Source #{idx+1} | File: {file_name} | Page: {page_num} | Category: {cat}] ---\n"
+                f"--- [Source #{idx+1} | File: {file_name} | {location_ref} | Category: {cat}] ---\n"
                 f"{match['text']}\n"
             )
 
-            cite_key = f"{file_name}_p{page_num}"
+            cite_key = f"{file_name}_{topic_title or page_num}"
             if cite_key not in seen_citations:
                 seen_citations.add(cite_key)
                 citations.append({
                     "file_name": file_name,
                     "page_number": page_num,
+                    "topic_title": topic_title,
+                    "location_ref": location_ref,
                     "category": cat
                 })
 
