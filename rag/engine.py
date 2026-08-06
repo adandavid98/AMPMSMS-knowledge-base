@@ -1,5 +1,7 @@
 import re
-from typing import Dict, Any, List
+import base64
+import io
+from typing import Dict, Any, List, Optional
 from vectorstore import VectorStoreManager
 from llm import get_llm_provider, BaseLLMProvider
 
@@ -28,6 +30,63 @@ class RAGEngine:
 
     def __init__(self, vector_store: VectorStoreManager = None):
         self.vector_store = vector_store or VectorStoreManager()
+
+    def _extract_text_from_images(self, images: list, api_key: str = None) -> Optional[str]:
+        """
+        Uses Gemini Vision to extract ALL text, error codes, and context from uploaded images.
+        This extracted text is then used to search the documentation database accurately.
+        Returns extracted text string, or None if extraction fails.
+        """
+        if not images:
+            return None
+        try:
+            import google.generativeai as genai
+            import config
+            active_key = api_key or config.GEMINI_API_KEY
+            if not active_key:
+                return None
+
+            genai.configure(api_key=active_key)
+
+            # Build content list: OCR instruction + all images
+            ocr_instruction = (
+                "You are an OCR and technical context extractor. "
+                "Read this image and extract ALL visible text exactly as it appears: "
+                "error messages, error codes, window titles, dialog box content, menu labels, "
+                "and any other text. Also describe what the screenshot is showing. "
+                "Be thorough and literal — do not summarize. Output all extracted text."
+            )
+            contents = [ocr_instruction]
+
+            for img_item in images:
+                try:
+                    from PIL import Image
+                    if isinstance(img_item, str):
+                        b64_data = img_item.split(",")[-1]
+                    elif isinstance(img_item, dict) and "data" in img_item:
+                        b64_data = img_item["data"].split(",")[-1]
+                    else:
+                        continue
+                    img_bytes = base64.b64decode(b64_data)
+                    pil_img = Image.open(io.BytesIO(img_bytes))
+                    contents.append(pil_img)
+                except Exception as img_err:
+                    print(f"[Warning] Could not decode image for OCR: {img_err}")
+                    continue
+
+            # Use Gemini Vision to extract text
+            for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
+                try:
+                    model = genai.GenerativeModel(model_name=model_name)
+                    response = model.generate_content(contents)
+                    extracted = response.text.strip()
+                    print(f"[Vision OCR] Extracted from image: {extracted[:200]}")
+                    return extracted
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f"[Warning] Vision extraction failed: {e}")
+        return None
 
     def _expand_query(self, query: str) -> str:
         """Expands short or single-term user queries to improve retrieval recall."""
@@ -80,10 +139,30 @@ class RAGEngine:
         if attached_text_blocks:
             full_question += "\n" + "\n".join(attached_text_blocks)
 
-        # 1. Expand search query for optimal retrieval
-        search_query = self._expand_query(full_question)
+        # 1. Vision Pre-processing: extract text from images to use as search context
+        image_extracted_text = None
+        if images:
+            image_extracted_text = self._extract_text_from_images(images, api_key=api_key)
 
-        # 2. Retrieve top matching chunks (Hybrid Search)
+        # 2. Build the best possible search query:
+        #    - If image text was extracted, use it (it's the most specific and accurate)
+        #    - Otherwise fall back to the user's typed question
+        is_vague_question = len(full_question.strip().split()) <= 10  # Short/vague questions
+        if image_extracted_text:
+            if is_vague_question:
+                # User typed something short like "What is this error?" — use image text as primary search query
+                search_query = self._expand_query(image_extracted_text)
+                # Append the user's typed question for final answer context
+                full_question = f"{full_question}\n\n[Image Content]: {image_extracted_text}"
+            else:
+                # User typed a detailed question AND uploaded an image — combine both
+                combined = f"{full_question} {image_extracted_text}"
+                search_query = self._expand_query(combined)
+                full_question = f"{full_question}\n\n[Image Content]: {image_extracted_text}"
+        else:
+            search_query = self._expand_query(full_question)
+
+        # 3. Retrieve top matching chunks (Hybrid Search)
         matches = self.vector_store.search(query=search_query, top_k=top_k, category_filter=category)
 
         if not matches:
@@ -120,7 +199,8 @@ class RAGEngine:
                 })
 
         formatted_context = "\n".join(context_blocks)
-        user_prompt = USER_PROMPT_TEMPLATE.format(context_text=formatted_context, question=question)
+        # Use the enriched full_question (includes image context) for the final LLM prompt
+        user_prompt = USER_PROMPT_TEMPLATE.format(context_text=formatted_context, question=full_question)
 
         # 4. Instantiate LLM Provider and generate answer
         provider: BaseLLMProvider = get_llm_provider(provider_name)
