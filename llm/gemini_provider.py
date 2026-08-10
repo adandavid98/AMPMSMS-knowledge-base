@@ -55,17 +55,40 @@ class GeminiLLMProvider(BaseLLMProvider):
                     except Exception as img_err:
                         print(f"[Warning] Failed to decode image attachment: {img_err}")
 
-            # Try primary model (gemini-3.6-flash), fallback to gemini-2.5-flash
-            for model_candidate in [self.model_name, "gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash"]:
+            # Unique list of active, valid Gemini API model names supported by your key
+            raw_candidates = [self.model_name, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest", "gemini-3.5-flash"]
+            candidates = []
+            for c in raw_candidates:
+                if c and c not in candidates:
+                    candidates.append(c)
+            
+            last_error = None
+            for model_candidate in candidates:
+                clean_name = model_candidate.replace("models/", "")
                 try:
                     model = genai.GenerativeModel(
-                        model_name=model_candidate,
+                        model_name=clean_name,
                         system_instruction=system_prompt
                     )
                     response = model.generate_content(contents)
-                    return response.text
-                except Exception:
+                    if response and hasattr(response, "text") and response.text:
+                        return response.text
+                except Exception as model_err:
+                    err_str = str(model_err)
+                    print(f"[Gemini Warning] Model {clean_name} failed: {err_str}")
+                    last_error = err_str
+                    # Continue trying next candidate model in list since each model has separate quota buckets
                     continue
-            return "[Gemini Error: Could not generate response with available Gemini models.]"
+
+            if "429" in str(last_error) or "quota" in str(last_error).lower():
+                return (
+                    "⚠️ **Gemini API Quota Limit Reached (HTTP 429)**\n\n"
+                    "Your free Gemini API key has temporarily reached Google's quota limit for today.\n\n"
+                    "**Solutions**:\n"
+                    "1. Switch to **Groq API** in the left sidebar under *LLM Provider* for instant responses with zero rate limits.\n"
+                    "2. Add your own custom Gemini API Key in the *API Key Settings* sidebar accordion."
+                )
+
+            return f"[Gemini API Error: {last_error or 'Could not generate response with available Gemini models.'}]"
         except Exception as e:
             return f"[Gemini Error: {str(e)}]"
