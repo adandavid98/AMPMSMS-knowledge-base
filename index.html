@@ -32,7 +32,7 @@
       <div class="sidebar-section">
         <label class="section-label" for="providerSelect">LLM Provider</label>
         <select id="providerSelect" class="select-control">
-          <option value="gemini" selected>Google Gemini 3.6 Flash</option>
+          <option value="gemini" selected>Google Gemini 2.5 Flash</option>
           <option value="groq">Groq API (Llama-3.3)</option>
           <option value="ollama">Ollama (Local Server)</option>
         </select>
@@ -61,6 +61,11 @@
             <input type="password" id="groqKeyInput" class="input-control" placeholder="Groq API Key (gsk_...)"
               autocomplete="off">
             <button type="button" class="icon-toggle-btn" id="toggleGroqKey" title="Show/Hide Key">👁️</button>
+          </div>
+          <div class="key-input-group" style="margin-top: 0.5rem;">
+            <input type="password" id="tavilyKeyInput" class="input-control" placeholder="Tavily API Key (tvly-...)"
+              autocomplete="off">
+            <button type="button" class="icon-toggle-btn" id="toggleTavilyKey" title="Show/Hide Key">👁️</button>
           </div>
           <button type="button" id="saveKeysBtn" class="save-keys-btn">Save Local API Keys</button>
         </div>

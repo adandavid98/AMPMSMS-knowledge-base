@@ -11,7 +11,9 @@ BASE_DIR = Path(__file__).parent.resolve()
 # API Keys & Endpoints
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 
 # Supabase Cloud Vector DB
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
@@ -23,7 +25,7 @@ APP_PASSPHRASE = os.getenv("APP_PASSPHRASE", "")
 
 # Defaults
 DEFAULT_LLM_PROVIDER = os.getenv("DEFAULT_LLM_PROVIDER", "gemini").lower()
-GEMINI_MODEL = "gemini-3.6-flash"  # Primary Flash model (fallback to gemini-2.5-flash)
+GEMINI_MODEL = "gemini-2.5-flash"  # Primary supported Flash model
 GEMINI_EMBEDDING_MODEL = "models/gemini-embedding-001"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 OLLAMA_MODEL = "llama3"

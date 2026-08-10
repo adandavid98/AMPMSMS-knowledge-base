@@ -1,7 +1,7 @@
 import os
 import shutil
 from pathlib import Path
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -52,6 +52,7 @@ class ChatRequest(BaseModel):
     top_k: Optional[int] = 5
     images: Optional[List[Any]] = None
     attachments: Optional[List[Any]] = None
+    history: Optional[List[Dict[str, str]]] = None
 
 
 @app.get("/")
@@ -68,8 +69,10 @@ def read_root():
 def get_stats():
     """Returns database and vector index status."""
     coll_name = getattr(vector_store, 'collection_name', getattr(vector_store, 'table_name', 'documents'))
+    doc_count = vector_store.count()
     return {
-        "total_documents": vector_store.count(),
+        "total_documents": doc_count,
+        "total_chunks": doc_count,
         "collection_name": coll_name,
         "primary_provider": config.DEFAULT_LLM_PROVIDER,
         "status": "healthy"
@@ -82,7 +85,8 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Header
 async def chat(
     request: ChatRequest,
     x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-Api-Key"),
-    x_groq_api_key: Optional[str] = Header(None, alias="X-Groq-Api-Key")
+    x_groq_api_key: Optional[str] = Header(None, alias="X-Groq-Api-Key"),
+    x_tavily_api_key: Optional[str] = Header(None, alias="X-Tavily-Api-Key")
 ):
     """Processes technician question through RAG pipeline and returns cited answer."""
     if not request.question.strip() and not request.images and not request.attachments:
@@ -104,7 +108,9 @@ async def chat(
             category=request.category,
             api_key=custom_api_key,
             images=request.images,
-            attachments=request.attachments
+            attachments=request.attachments,
+            history=request.history,
+            tavily_api_key=x_tavily_api_key
         )
         return result
     except Exception as e:
