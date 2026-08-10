@@ -77,11 +77,12 @@ class SupabaseVectorStore:
 
         combined_matches: Dict[str, Dict[str, Any]] = {}
 
-        # 2. Vector Similarity Search (Fetch top 15 candidates)
+        # 2. Vector Similarity Search (Fetch top 20 candidates, filter by min threshold)
+        MIN_SIMILARITY = 0.35  # Discard chunks with very low semantic relevance
         try:
             res = self.client.rpc("match_documents", {
                 "query_embedding": query_vec,
-                "match_count": 15,
+                "match_count": 20,
                 "filter": filter_json
             }).execute()
 
@@ -89,6 +90,9 @@ class SupabaseVectorStore:
                 for row in res.data:
                     c_id = row.get("id")
                     sim = float(row.get("similarity", 0.0))
+                    if sim < MIN_SIMILARITY:
+                        print(f"[Search] Dropped low-relevance chunk (score={sim:.2f}): {row.get('metadata', {}).get('topic_title', c_id)}")
+                        continue
                     combined_matches[c_id] = {
                         "id": c_id,
                         "text": row.get("text"),
@@ -99,37 +103,30 @@ class SupabaseVectorStore:
         except Exception as e:
             print(f"[Warning] Vector search error: {e}")
 
-        # 3. Exact Keyword Search (Extract filenames, .ini, error numbers)
-        keywords = re.findall(r'[A-Za-z0-9_\-\.]{3,}', query)
-        important_terms = [kw.lower() for kw in keywords if len(kw) >= 4 or '.ini' in kw.lower() or kw.isdigit()]
+        # 3. Enhanced Multi-Term Keyword Search & Score Boosting
+        # Extract meaningful terms: model numbers, error codes, filenames, brand names, technical concepts
+        raw_words = re.findall(r'[A-Za-z0-9_\-\.]{3,}', query)
+        stop_words = {"find", "documents", "only", "how", "can", "setup", "set", "using", "with", "from", "the", "for", "and", "that", "this", "what", "which", "your"}
+        key_terms = [w for w in raw_words if w.lower() not in stop_words and len(w) >= 3]
 
-        if important_terms:
+        if key_terms:
             try:
-                # Search Supabase text column for the exact phrase first
-                exact_phrase = query.strip()
-                kw_res = self.client.table(self.table_name).select("id, text, metadata").ilike("text", f"%{exact_phrase}%").limit(10).execute()
-                
-                # If exact phrase not found, fall back ONLY to highly specific technical terms
-                # (e.g. error codes, filenames like .ini, or specific models like M400)
-                if not kw_res.data and len(important_terms) > 0:
-                     technical_terms = [t for t in important_terms if '.' in t or any(char.isdigit() for char in t) or t.isupper()]
-                     if technical_terms:
-                         term = technical_terms[0]
-                         kw_res = self.client.table(self.table_name).select("id, text, metadata").ilike("text", f"%{term}%").limit(10).execute()
-
-                if kw_res.data:
-                    for row in kw_res.data:
-                        c_id = row.get("id")
-                        if c_id in combined_matches:
-                            combined_matches[c_id]["score"] += 0.3  # Boost existing candidate
-                        else:
-                            combined_matches[c_id] = {
-                                "id": c_id,
-                                "text": row.get("text"),
-                                "metadata": row.get("metadata", {}),
-                                "score": 0.5,
-                                "distance": 0.5
-                            }
+                # Search Supabase for each key term and boost matching chunks
+                for term in key_terms[:5]: # Search up to top 5 key terms
+                    kw_res = self.client.table(self.table_name).select("id, text, metadata").ilike("text", f"%{term}%").limit(15).execute()
+                    if kw_res.data:
+                        for row in kw_res.data:
+                            c_id = row.get("id")
+                            if c_id in combined_matches:
+                                combined_matches[c_id]["score"] += 0.15  # Moderate boost for matching query terms
+                            else:
+                                combined_matches[c_id] = {
+                                    "id": c_id,
+                                    "text": row.get("text"),
+                                    "metadata": row.get("metadata", {}),
+                                    "score": 0.20,  # Low initial score for keyword-only matches
+                                    "distance": 0.80
+                                }
             except Exception as e:
                 print(f"[Warning] Keyword search error: {e}")
 
@@ -140,7 +137,10 @@ class SupabaseVectorStore:
     def count(self) -> int:
         """Returns total document count in Supabase table."""
         try:
-            res = self.client.table(self.table_name).select("id", count="exact").execute()
-            return res.count or 0
-        except Exception:
+            # Adding limit(1) prevents downloading all IDs while still getting the exact count
+            res = self.client.table(self.table_name).select("id", count="exact").limit(1).execute()
+            # In the Supabase python client, count is an attribute on the response object
+            return res.count if res.count is not None else 0
+        except Exception as e:
+            print(f"[Warning] Error getting document count: {e}")
             return 0
