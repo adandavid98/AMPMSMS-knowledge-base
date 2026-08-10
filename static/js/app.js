@@ -14,10 +14,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const geminiKeyInput = document.getElementById('geminiKeyInput');
     const groqKeyInput = document.getElementById('groqKeyInput');
+    const tavilyKeyInput = document.getElementById('tavilyKeyInput');
     const saveKeysBtn = document.getElementById('saveKeysBtn');
     const keyStatusBadge = document.getElementById('keyStatusBadge');
     const toggleGeminiKey = document.getElementById('toggleGeminiKey');
     const toggleGroqKey = document.getElementById('toggleGroqKey');
+    const toggleTavilyKey = document.getElementById('toggleTavilyKey');
 
     const toggleApiKeyAccordion = document.getElementById('toggleApiKeyAccordion');
     const apiKeyCollapseContent = document.getElementById('apiKeyCollapseContent');
@@ -45,17 +47,24 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleGroqKey.addEventListener('click', () => {
         groqKeyInput.type = groqKeyInput.type === 'password' ? 'text' : 'password';
     });
+    toggleTavilyKey.addEventListener('click', () => {
+        tavilyKeyInput.type = tavilyKeyInput.type === 'password' ? 'text' : 'password';
+    });
 
     // Save Keys Button
     saveKeysBtn.addEventListener('click', () => {
         const geminiVal = geminiKeyInput.value.trim();
         const groqVal = groqKeyInput.value.trim();
+        const tavilyVal = tavilyKeyInput.value.trim();
 
         if (geminiVal) localStorage.setItem('gemini_api_key', geminiVal);
         else localStorage.removeItem('gemini_api_key');
 
         if (groqVal) localStorage.setItem('groq_api_key', groqVal);
         else localStorage.removeItem('groq_api_key');
+
+        if (tavilyVal) localStorage.setItem('tavily_api_key', tavilyVal);
+        else localStorage.removeItem('tavily_api_key');
 
         updateKeyBadgeStatus();
         alert('Local API Keys saved securely in your browser!');
@@ -64,9 +73,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function loadSavedApiKeys() {
         const savedGemini = localStorage.getItem('gemini_api_key');
         const savedGroq = localStorage.getItem('groq_api_key');
+        const savedTavily = localStorage.getItem('tavily_api_key');
 
         if (savedGemini) geminiKeyInput.value = savedGemini;
         if (savedGroq) groqKeyInput.value = savedGroq;
+        if (savedTavily) tavilyKeyInput.value = savedTavily;
 
         updateKeyBadgeStatus();
     }
@@ -74,8 +85,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateKeyBadgeStatus() {
         const hasGemini = !!localStorage.getItem('gemini_api_key');
         const hasGroq = !!localStorage.getItem('groq_api_key');
+        const hasTavily = !!localStorage.getItem('tavily_api_key');
 
-        if (hasGemini || hasGroq) {
+        if (hasGemini || hasGroq || hasTavily) {
             keyStatusBadge.textContent = 'Custom Key Active ✓';
             keyStatusBadge.classList.add('active');
         } else {
@@ -93,6 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let attachedImages = [];
     let attachedTextFiles = [];
+    let conversationHistory = [];
 
     // Attach Paperclip Button Listener
     attachBtn.addEventListener('click', () => promptFileInput.click());
@@ -233,9 +246,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const headers = { 'Content-Type': 'application/json' };
         const savedGemini = localStorage.getItem('gemini_api_key');
         const savedGroq = localStorage.getItem('groq_api_key');
+        const savedTavily = localStorage.getItem('tavily_api_key');
 
         if (savedGemini) headers['X-Gemini-Api-Key'] = savedGemini;
         if (savedGroq) headers['X-Groq-Api-Key'] = savedGroq;
+        if (savedTavily) headers['X-Tavily-Api-Key'] = savedTavily;
 
         try {
             const response = await fetch('/api/chat', {
@@ -247,7 +262,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     category: categorySelect.value || null,
                     top_k: 5,
                     images: currentImages,
-                    attachments: currentAttachments
+                    attachments: currentAttachments,
+                    history: conversationHistory
                 })
             });
 
@@ -255,7 +271,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (response.ok) {
                 const data = await response.json();
-                appendMessage('assistant', data.answer, data.citations, data.provider_used);
+                appendMessage('assistant', data.answer, data.citations, data.provider_used, data.is_web_fallback);
+                
+                // Add to history
+                conversationHistory.push({ role: 'user', content: question });
+                conversationHistory.push({ role: 'assistant', content: data.answer });
+                
+                // Keep only last 6 turns (12 messages)
+                if (conversationHistory.length > 12) {
+                    conversationHistory = conversationHistory.slice(conversationHistory.length - 12);
+                }
             } else {
                 const err = await response.json();
                 appendMessage('assistant', `⚠️ **Error**: ${err.detail || 'Failed to process request.'}`);
@@ -327,15 +352,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/stats');
             if (res.ok) {
                 const data = await res.json();
-                statChunks.textContent = data.total_documents;
-                statDocs.textContent = data.collection_name;
+                statChunks.textContent = data.total_chunks !== undefined ? data.total_chunks : (data.total_documents || 0);
+                statDocs.textContent = data.collection_name || 'documents';
             }
         } catch (e) {
             console.warn('Could not fetch stats', e);
         }
     }
 
-    function appendMessage(sender, text, citations = [], providerUsed = '') {
+    function appendMessage(sender, text, citations = [], providerUsed = '', isWebFallback = false) {
         const msgId = 'msg-' + Date.now();
         const row = document.createElement('div');
         row.className = `message-row ${sender}`;
@@ -347,19 +372,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const bubble = document.createElement('div');
         bubble.className = 'message-bubble';
+        if (isWebFallback) {
+            bubble.classList.add('web-fallback-bubble');
+        }
         
-        let htmlContent = formatMarkdown(text);
+        let htmlContent = '';
+        
+        if (isWebFallback) {
+            htmlContent += `
+                <div style="background: #FFF3CD; color: #856404; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.8rem; border-left: 4px solid #FFEEBA; font-size: 0.9em;">
+                    <strong>🌐 Answer from Web Search — Not verified company documentation.</strong>
+                </div>
+            `;
+        }
+        
+        htmlContent += formatMarkdown(text);
 
         if (citations && citations.length > 0) {
             htmlContent += `
                 <div class="citations-box">
                     <div class="citations-title">Sources & References (${providerUsed})</div>
                     <div class="citation-chips">
-                        ${citations.map(c => `
-                            <span class="citation-chip">
-                                📄 ${escapeHtml(c.file_name)} (Page ${c.page_number})
-                            </span>
-                        `).join('')}
+                        ${citations.map(c => {
+                            let fileName = escapeHtml(c.file_name || 'Document');
+                            let topic = c.topic_title ? escapeHtml(c.topic_title.trim()) : '';
+                            let isPdf = (c.file_name || '').toLowerCase().endsWith('.pdf');
+                            let chipText = '';
+
+                            if (isWebFallback) {
+                                chipText = `🔗 ${fileName}`;
+                            } else if (topic && topic !== 'N/A') {
+                                chipText = `📄 ${fileName} [Topic: ${topic}]`;
+                            } else if (isPdf && c.page_number && c.page_number !== 'N/A') {
+                                chipText = `📄 ${fileName} (Page ${c.page_number})`;
+                            } else {
+                                chipText = `📄 ${fileName}`;
+                            }
+
+                            return `<span class="citation-chip">${chipText}</span>`;
+                        }).join('')}
                     </div>
                 </div>
             `;
@@ -412,7 +463,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function formatMarkdown(text) {
         if (!text) return '';
-        let formatted = escapeHtml(text);
+        
+        let lines = text.split('\n');
+        let processedLines = [];
+        
+        for (let line of lines) {
+            let trimmed = line.trim();
+            
+            // Remove horizontal divider lines (e.g. --- or *** or ___)
+            if (/^(---|[*]{3,}|_{3,})$/.test(trimmed)) {
+                continue;
+            }
+            
+            // Transform headers (### Header, #### Header, etc.) into clean bold section headers
+            if (/^#{1,6}\s+(.*)/.test(trimmed)) {
+                let headerText = trimmed.replace(/^#{1,6}\s+/, '');
+                processedLines.push(`<strong>${escapeHtml(headerText)}</strong>`);
+                continue;
+            }
+            
+            processedLines.push(escapeHtml(line));
+        }
+        
+        let formatted = processedLines.join('\n');
+        
+        // Strip inline citations like (Source: RBSLynk ISO.pdf, p. 5) or (Source #1: ...)
+        formatted = formatted.replace(/\s*\(\s*Source(?:\s*#\d+)?\s*:\s*.*?\)/gi, '');
         
         // Bold
         formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
