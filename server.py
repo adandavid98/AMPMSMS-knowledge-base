@@ -119,7 +119,7 @@ def check_access_authorization(
                 else:
                     raise HTTPException(
                         status_code=403,
-                        detail=f"Access denied: Email '{email}' must belong to domain {config.ALLOWED_EMAIL_DOMAIN}"
+                        detail="Access denied. Enter a valid email."
                     )
         except HTTPException:
             raise
@@ -154,7 +154,7 @@ async def login(request: AuthLoginRequest):
     if not email.endswith(config.ALLOWED_EMAIL_DOMAIN.lower()):
         raise HTTPException(
             status_code=403,
-            detail=f"Access denied. Email must end with '{config.ALLOWED_EMAIL_DOMAIN}'."
+            detail="Access denied. Enter a valid email."
         )
 
     if not passphrase:
