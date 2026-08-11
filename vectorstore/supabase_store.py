@@ -104,29 +104,48 @@ class SupabaseVectorStore:
             print(f"[Warning] Vector search error: {e}")
 
         # 3. Enhanced Multi-Term Keyword Search & Score Boosting
-        # Extract meaningful terms: model numbers, error codes, filenames, brand names, technical concepts
         raw_words = re.findall(r'[A-Za-z0-9_\-\.]{3,}', query)
         stop_words = {"find", "documents", "only", "how", "can", "setup", "set", "using", "with", "from", "the", "for", "and", "that", "this", "what", "which", "your"}
-        key_terms = [w for w in raw_words if w.lower() not in stop_words and len(w) >= 3]
+        # Sort terms by length descending to prioritize highly specific jargon
+        key_terms = sorted([w for w in raw_words if w.lower() not in stop_words and len(w) >= 3], key=len, reverse=True)
 
         if key_terms:
             try:
-                # Search Supabase for each key term and boost matching chunks
-                for term in key_terms[:5]: # Search up to top 5 key terms
-                    kw_res = self.client.table(self.table_name).select("id, text, metadata").ilike("text", f"%{term}%").limit(15).execute()
+                # We will track how many distinct terms each document matches
+                keyword_hits = {}
+                
+                for term in key_terms[:10]: # Search up to top 10 key terms
+                    kw_res = self.client.table(self.table_name).select("id, text, metadata").ilike("text", f"%{term}%").limit(20).execute()
                     if kw_res.data:
                         for row in kw_res.data:
                             c_id = row.get("id")
-                            if c_id in combined_matches:
-                                combined_matches[c_id]["score"] += 0.15  # Moderate boost for matching query terms
-                            else:
-                                combined_matches[c_id] = {
-                                    "id": c_id,
-                                    "text": row.get("text"),
-                                    "metadata": row.get("metadata", {}),
-                                    "score": 0.20,  # Low initial score for keyword-only matches
-                                    "distance": 0.80
-                                }
+                            if c_id not in keyword_hits:
+                                keyword_hits[c_id] = {"count": 0, "row": row}
+                            keyword_hits[c_id]["count"] += 1
+
+                # Inject or boost candidates based on term frequency
+                for c_id, hit_data in keyword_hits.items():
+                    count = hit_data["count"]
+                    row = hit_data["row"]
+                    
+                    if c_id in combined_matches:
+                        # Boost existing vector search candidate (+0.08 per matched keyword)
+                        combined_matches[c_id]["score"] += (count * 0.08)
+                    else:
+                        # Inject new candidate. 
+                        # Requires at least 2 distinct keyword matches to be considered somewhat relevant.
+                        # Base score is 0.15 + (count * 0.10). 
+                        # To pass the 0.40 threshold in engine.py purely via keywords, it needs >= 3 matches.
+                        new_score = 0.15 + (count * 0.10)
+                        if new_score >= 0.35: # Only inject if it has a chance to be relevant
+                            combined_matches[c_id] = {
+                                "id": c_id,
+                                "text": row.get("text"),
+                                "metadata": row.get("metadata", {}),
+                                "score": new_score,
+                                "distance": 1.0 - new_score
+                            }
+                            
             except Exception as e:
                 print(f"[Warning] Keyword search error: {e}")
 
