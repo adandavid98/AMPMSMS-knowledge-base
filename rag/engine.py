@@ -9,15 +9,15 @@ from .tavily_search import TavilySearcher
 
 INTERNAL_KB_SYSTEM_PROMPT = """You are the AMPM Service technical support assistant for SMS by LOC point-of-sale systems.
 
-You will be given retrieved internal documentation excerpts and a user's question.
+You will be given retrieved internal documentation excerpts and a user's question. If the user attaches files or images, their extracted text will be appended to the question.
 
 Rules:
-1. Answer using the provided internal documentation excerpts.
-2. Synthesize information across all provided document excerpts to give clear, structured, step-by-step troubleshooting or configuration instructions.
+1. Answer using the provided internal documentation excerpts AND any [Technician Attached Reference File] or [Image Content] provided in the question. Treat attached technical documents as highly authoritative.
+2. Synthesize information across all provided document excerpts and attachments to give clear, structured, step-by-step troubleshooting or configuration instructions.
 3. Do NOT include inline citations or source references in the text body (do NOT write '(Source: ...)' or '(Source #...)' in paragraphs). Write clean text. The system automatically lists the source references at the bottom of the message.
 4. Do NOT use markdown headers (such as ### or ####) or horizontal divider lines (such as --- or ***). Format section titles using simple bold text (e.g. **1. Section Title**).
-5. If a specific sub-detail is not explicitly in the excerpts (e.g., exact field for partial authorization on a specific host), explain how the general configuration works based on the excerpts and clearly state what specific setting should be verified with support/manuals.
-6. Do NOT output NOT_FOUND_IN_KB unless the excerpts are completely blank or 100% unrelated to any POS, register, bank, or payment topics.
+5. If a specific sub-detail is not explicitly in the excerpts or attachments, explain how the general configuration works based on them and clearly state what specific setting should be verified with support.
+6. Do NOT output NOT_FOUND_IN_KB unless both the retrieved excerpts AND the attached contents are completely blank or 100% unrelated to any POS, register, bank, or payment topics.
 7. Keep the tone practical, professional, and step-by-step, like an experienced POS field engineer speaking to another technician."""
 
 WEB_FALLBACK_SYSTEM_PROMPT = """No internal documentation matched this question. You are now answering using web search results instead of company documentation.
@@ -106,8 +106,23 @@ class RAGEngine:
 
     def _rewrite_query_llm(self, query: str, provider_name: str, api_key: str = None) -> str:
         """Cleans and expands user queries to improve vector retrieval recall."""
-        # Strip conversational filler locally to avoid burning API rate limits
+        # Strip conversational filler locally
         clean_q = re.sub(r'(?i)(find\s+in\s+the\s+documents\s+only|documents\s+only|internal\s+docs\s+only|you\s+can\s+also\s+search\s+on\s+the\s+web|search\s+web)', '', query).strip()
+        
+        try:
+            provider = get_llm_provider(provider_name)
+            user_prompt = f"Original Query: {clean_q}\n\nRewrite this to extract only the most important technical keywords and file names for a database search."
+            rewritten = provider.generate_answer(
+                system_prompt=QUERY_REWRITE_SYSTEM_PROMPT, 
+                user_prompt=user_prompt, 
+                api_key=api_key
+            )
+            if rewritten and not rewritten.isspace():
+                print(f"[Query Rewrite] {clean_q} -> {rewritten}")
+                return rewritten.strip()
+        except Exception as e:
+            print(f"[Warning] LLM query rewrite failed: {e}. Using regex fallback.")
+
         return clean_q or query.strip()
 
     def _format_history(self, history: list) -> str:
