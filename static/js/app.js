@@ -25,6 +25,153 @@ document.addEventListener('DOMContentLoaded', () => {
     const apiKeyCollapseContent = document.getElementById('apiKeyCollapseContent');
     const accordionChevron = document.getElementById('accordionChevron');
 
+    // Auth DOM Elements
+    const authOverlay = document.getElementById('authOverlay');
+    const userBadgeContainer = document.getElementById('userBadgeContainer');
+    const authenticatedUserLabel = document.getElementById('authenticatedUserLabel');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    const authForm = document.getElementById('authForm');
+    const passphraseInput = document.getElementById('passphraseInput');
+    const emailInput = document.getElementById('emailInput');
+    const authError = document.getElementById('authError');
+    const togglePassphrase = document.getElementById('togglePassphrase');
+
+    // Auth Password Visibility Toggle
+    if (togglePassphrase && passphraseInput) {
+        togglePassphrase.addEventListener('click', () => {
+            passphraseInput.type = passphraseInput.type === 'password' ? 'text' : 'password';
+        });
+    }
+
+    // Handle Unified Authentication Submit (Email + Passphrase Mandatory)
+    if (authForm) {
+        authForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (authError) authError.classList.add('hidden');
+            const email = emailInput ? emailInput.value.trim() : '';
+            const passphrase = passphraseInput ? passphraseInput.value.trim() : '';
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, passphrase })
+                });
+                const data = await res.json();
+                if (res.ok && data.status === 'success') {
+                    localStorage.setItem('auth_token', data.token);
+                    localStorage.setItem('auth_user', data.user || email);
+                    hideAuthOverlay();
+                    showUserBadge(data.user || email);
+                    fetchStats();
+                } else {
+                    if (authError) {
+                        let errorText = 'Authentication failed.';
+                        if (data && data.detail) {
+                            if (Array.isArray(data.detail)) {
+                                errorText = data.detail.map(e => e.msg).join(', ');
+                            } else if (typeof data.detail === 'object') {
+                                errorText = JSON.stringify(data.detail);
+                            } else {
+                                errorText = String(data.detail);
+                            }
+                        } else if (data && data.message) {
+                            errorText = String(data.message);
+                        } else if (typeof data === 'object') {
+                            errorText = JSON.stringify(data);
+                        } else if (data) {
+                            errorText = String(data);
+                        }
+                        authError.textContent = errorText;
+                        authError.classList.remove('hidden');
+                    }
+                }
+            } catch (err) {
+                if (authError) {
+                    authError.textContent = 'Network error during authentication.';
+                    authError.classList.remove('hidden');
+                }
+            }
+        });
+    }
+
+    // Logout Handler
+    logoutBtn.addEventListener('click', () => {
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('auth_user');
+        hideUserBadge();
+        showAuthOverlay();
+    });
+
+    function getAuthHeaders(baseHeaders = {}) {
+        const headers = { ...baseHeaders };
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        return headers;
+    }
+
+    const appContainer = document.querySelector('.app-container');
+
+    function showAuthOverlay() {
+        if (authOverlay) {
+            authOverlay.classList.remove('hidden');
+            authOverlay.style.setProperty('display', 'flex', 'important');
+        }
+        if (appContainer) {
+            appContainer.classList.add('hidden');
+            appContainer.style.setProperty('display', 'none', 'important');
+        }
+    }
+
+    function hideAuthOverlay() {
+        if (authOverlay) {
+            authOverlay.classList.add('hidden');
+            authOverlay.style.setProperty('display', 'none', 'important');
+        }
+        if (appContainer) {
+            appContainer.classList.remove('hidden');
+            appContainer.style.setProperty('display', 'flex', 'important');
+        }
+    }
+
+    function showUserBadge(userStr) {
+        authenticatedUserLabel.textContent = userStr || 'Technician';
+        userBadgeContainer.classList.remove('hidden');
+    }
+
+    function hideUserBadge() {
+        userBadgeContainer.classList.add('hidden');
+    }
+
+    // Verify session on page load
+    async function checkSession() {
+        const token = localStorage.getItem('auth_token');
+        const user = localStorage.getItem('auth_user');
+        if (!token) {
+            showAuthOverlay();
+            return;
+        }
+        try {
+            const res = await fetch('/api/auth/verify', {
+                headers: getAuthHeaders()
+            });
+            if (res.ok) {
+                hideAuthOverlay();
+                showUserBadge(user || 'AMPM Technician');
+                fetchStats();
+            } else {
+                showAuthOverlay();
+            }
+        } catch (e) {
+            showAuthOverlay();
+        }
+    }
+
+    checkSession();
+
     // Accordion Toggle
     toggleApiKeyAccordion.addEventListener('click', () => {
         const isHidden = apiKeyCollapseContent.classList.contains('hidden');
@@ -243,7 +390,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const typingId = appendTypingIndicator();
 
         // Build Headers
-        const headers = { 'Content-Type': 'application/json' };
+        let headers = { 'Content-Type': 'application/json' };
+        headers = getAuthHeaders(headers);
+
         const savedGemini = localStorage.getItem('gemini_api_key');
         const savedGroq = localStorage.getItem('groq_api_key');
         const savedTavily = localStorage.getItem('tavily_api_key');
@@ -268,6 +417,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             removeTypingIndicator(typingId);
+
+            if (response.status === 401) {
+                appendMessage('assistant', '🔒 **Authentication Required**: Session expired or unauthorized. Please log in.');
+                showAuthOverlay();
+                return;
+            }
 
             if (response.ok) {
                 const data = await response.json();
@@ -332,8 +487,15 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch('/api/ingest', {
                 method: 'POST',
+                headers: getAuthHeaders(),
                 body: formData
             });
+
+            if (res.status === 401) {
+                updateMessageContent(statusId, '🔒 **Authentication Required**: Please log in to ingest documents.');
+                showAuthOverlay();
+                return;
+            }
 
             if (res.ok) {
                 const data = await res.json();
@@ -349,7 +511,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchStats() {
         try {
-            const res = await fetch('/api/stats');
+            const res = await fetch('/api/stats', {
+                headers: getAuthHeaders()
+            });
+            if (res.status === 401) {
+                showAuthOverlay();
+                return;
+            }
             if (res.ok) {
                 const data = await res.json();
                 statChunks.textContent = data.total_chunks !== undefined ? data.total_chunks : (data.total_documents || 0);
@@ -359,6 +527,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.warn('Could not fetch stats', e);
         }
     }
+
 
     function appendMessage(sender, text, citations = [], providerUsed = '', isWebFallback = false) {
         const msgId = 'msg-' + Date.now();
@@ -416,14 +585,81 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
 
+        if (sender === 'assistant' && text && !text.includes('📄 *Uploading') && !text.includes('🔒 **Authentication Required')) {
+            htmlContent += `
+                <div class="feedback-toolbar" id="fb-${msgId}">
+                    <button type="button" class="feedback-btn fb-thumbs-up" title="Helpful answer">👍 Helpful</button>
+                    <button type="button" class="feedback-btn fb-thumbs-down" title="Not helpful">👎 Not Helpful</button>
+                    <button type="button" class="feedback-btn btn-resolved fb-resolved" title="Mark as confirmed fix in knowledge base">⭐ Resolved My Issue</button>
+                </div>
+                <div class="feedback-toast hidden" id="toast-${msgId}"></div>
+            `;
+        }
+
         bubble.innerHTML = htmlContent;
         row.appendChild(avatar);
         row.appendChild(bubble);
+
+        if (sender === 'assistant') {
+            const fbToolbar = bubble.querySelector('.feedback-toolbar');
+            if (fbToolbar) {
+                const btnUp = fbToolbar.querySelector('.fb-thumbs-up');
+                const btnDown = fbToolbar.querySelector('.fb-thumbs-down');
+                const btnResolved = fbToolbar.querySelector('.fb-resolved');
+                const toast = bubble.querySelector('.feedback-toast');
+
+                const sendFeedback = async (type) => {
+                    btnUp.disabled = true;
+                    btnDown.disabled = true;
+                    btnResolved.disabled = true;
+
+                    if (type === 'thumbs_up') btnUp.classList.add('active-thumbs-up');
+                    if (type === 'thumbs_down') btnDown.classList.add('active-thumbs-down');
+                    if (type === 'resolved') btnResolved.classList.add('active-resolved');
+
+                    try {
+                        const userQuestion = conversationHistory.length >= 2 ? conversationHistory[conversationHistory.length - 2].content : "POS Troubleshooting Query";
+
+                        const res = await fetch('/api/feedback', {
+                            method: 'POST',
+                            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+                            body: JSON.stringify({
+                                question: userQuestion,
+                                answer: text,
+                                provider: providerUsed || providerSelect.value,
+                                feedback_type: type,
+                                category: categorySelect.value || "General"
+                            })
+                        });
+
+                        if (res.ok) {
+                            const resData = await res.json();
+                            if (toast) {
+                                toast.classList.remove('hidden');
+                                if (type === 'resolved') {
+                                    toast.innerHTML = '✅ <strong>Confirmed Fix Saved!</strong> Solution indexed into knowledge base for future queries.';
+                                    fetchStats();
+                                } else {
+                                    toast.innerHTML = '✨ <strong>Thank you!</strong> Your feedback helps improve troubleshooting accuracy.';
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('Feedback send error', err);
+                    }
+                };
+
+                btnUp.addEventListener('click', () => sendFeedback('thumbs_up'));
+                btnDown.addEventListener('click', () => sendFeedback('thumbs_down'));
+                btnResolved.addEventListener('click', () => sendFeedback('resolved'));
+            }
+        }
 
         messagesContainer.appendChild(row);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
         return msgId;
     }
+
 
     function updateMessageContent(msgId, text) {
         const msgRow = document.getElementById(msgId);
