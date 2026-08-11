@@ -20,13 +20,16 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
-# Passphrase Security
-APP_PASSPHRASE = os.getenv("APP_PASSPHRASE", "")
+# Authentication & Access Control
+REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "true").lower() in ("true", "1", "yes")
+ALLOWED_EMAIL_DOMAIN = os.getenv("ALLOWED_EMAIL_DOMAIN", "@ampmservice.com").lower()
+APP_PASSPHRASE = os.getenv("APP_PASSPHRASE", "AMPM$$16520")
 
 # Defaults
 DEFAULT_LLM_PROVIDER = os.getenv("DEFAULT_LLM_PROVIDER", "gemini").lower()
-GEMINI_MODEL = "gemini-2.5-flash"  # Primary supported Flash model
+GEMINI_MODEL = "gemini-1.5-flash"  # Primary active Flash model
 GEMINI_EMBEDDING_MODEL = "models/gemini-embedding-001"
+
 GROQ_MODEL = "llama-3.3-70b-versatile"
 OLLAMA_MODEL = "llama3"
 
@@ -43,5 +46,7 @@ VALID_CATEGORIES = [
     "SMS Software",
     "Server Config",
     "Network / Connectivity",
+    "Confirmed Fixes",
     "General"
 ]
+

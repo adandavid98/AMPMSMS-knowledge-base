@@ -9,12 +9,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/styles.css">
-  <link rel="stylesheet" href="css/styles.css">
 </head>
 
 <body>
 
-  <div class="app-container">
+  <div class="app-container hidden" style="display: none !important;">
 
     <!-- Sidebar Control Panel -->
     <aside class="sidebar">
@@ -27,6 +26,16 @@
           <div class="brand-subtitle">POS TROUBLESHOOTING AI</div>
         </div>
       </div>
+
+      <!-- Auth User Badge -->
+      <div id="userBadgeContainer" class="user-badge-container hidden">
+        <div class="user-info-flex">
+          <span class="user-icon">👤</span>
+          <span id="authenticatedUserLabel" class="user-label">Technician</span>
+        </div>
+        <button type="button" id="logoutBtn" class="logout-btn" title="Sign Out">Logout</button>
+      </div>
+
 
       <!-- LLM Provider Selector -->
       <div class="sidebar-section">
@@ -158,7 +167,40 @@
 
   </div>
 
+  <!-- Independent Initial Auth Landing Screen -->
+  <div id="authOverlay" class="auth-overlay">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-logo-wrap">
+          <img src="/static/images/ampm_logo.svg" alt="AMPM Logo" class="auth-logo">
+        </div>
+        <h2>AMPM Service - SMS Knowledge Base</h2>
+      </div>
+
+      <!-- Unified Auth Form: Email & Passphrase Both Mandatory -->
+      <form id="authForm" class="auth-form-content">
+        <div class="form-group">
+          <label for="emailInput" class="section-label">COMPANY EMAIL</label>
+          <input type="email" id="emailInput" class="input-control" required autocomplete="username">
+        </div>
+
+        <div class="form-group">
+          <label for="passphraseInput" class="section-label">TEAM PASSPHRASE</label>
+          <div class="key-input-group">
+            <input type="password" id="passphraseInput" class="input-control" placeholder="Enter team passphrase..." required autocomplete="current-password">
+            <button type="button" class="icon-toggle-btn" id="togglePassphrase" title="Show/Hide">👁️</button>
+          </div>
+        </div>
+
+        <div id="authError" class="auth-error-msg hidden"></div>
+        <button type="submit" class="auth-submit-btn">Login ➔</button>
+      </form>
+    </div>
+  </div>
+
+
   <script src="/static/js/app.js"></script>
 </body>
+
 
 </html>

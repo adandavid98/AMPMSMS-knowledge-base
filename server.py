@@ -55,6 +55,83 @@ class ChatRequest(BaseModel):
     history: Optional[List[Dict[str, str]]] = None
 
 
+class AuthLoginRequest(BaseModel):
+    auth_type: Optional[str] = None
+    passphrase: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
+
+
+class FeedbackRequest(BaseModel):
+    question: str
+    answer: str
+    provider: Optional[str] = "gemini"
+    feedback_type: str  # 'thumbs_up', 'thumbs_down', 'resolved'
+    category: Optional[str] = "General"
+    notes: Optional[str] = None
+
+
+
+from fastapi import Header, Depends
+
+def check_access_authorization(
+    authorization: Optional[str] = Header(None),
+    x_app_passphrase: Optional[str] = Header(None)
+) -> Dict[str, Any]:
+    """Validates authorization token or team passphrase."""
+    if not config.REQUIRE_AUTH:
+        return {"authenticated": True, "method": "none", "user": "Anonymous"}
+
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.replace("Bearer ", "").strip()
+    elif x_app_passphrase:
+        token = x_app_passphrase.strip()
+
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required. Please log in with an @ampmservice.com email or team passphrase."
+        )
+
+    # 1. Check Team Passphrase match
+    if config.APP_PASSPHRASE and token == config.APP_PASSPHRASE:
+        return {"authenticated": True, "method": "passphrase", "user": "AMPM Field Technician"}
+
+    # 2. Check Corporate Email token match
+    if token.startswith("email_token_"):
+        email = token.replace("email_token_", "").strip().lower()
+        if email.endswith(config.ALLOWED_EMAIL_DOMAIN.lower()):
+            return {"authenticated": True, "method": "email_domain", "user": email}
+
+    # 3. Check Supabase Auth JWT Token
+    if config.SUPABASE_URL and (config.SUPABASE_KEY or config.SUPABASE_SERVICE_ROLE_KEY):
+        try:
+            from supabase import create_client
+            key = config.SUPABASE_SERVICE_ROLE_KEY or config.SUPABASE_KEY
+            client = create_client(config.SUPABASE_URL, key)
+            user_res = client.auth.get_user(token)
+            if user_res and user_res.user:
+                email = (user_res.user.email or "").lower()
+                domain = config.ALLOWED_EMAIL_DOMAIN.lower()
+                if email.endswith(domain):
+                    return {"authenticated": True, "method": "supabase_auth", "user": email}
+                else:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Access denied: Email '{email}' must belong to domain {config.ALLOWED_EMAIL_DOMAIN}"
+                    )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    raise HTTPException(
+        status_code=401,
+        detail="Invalid authentication token or passphrase."
+    )
+
+
 @app.get("/")
 def read_root():
     """Serves the main frontend Web UI application."""
@@ -65,8 +142,48 @@ def read_root():
     return JSONResponse({"status": "healthy", "service": "AMPM POS Assistant API"})
 
 
+@app.post("/api/auth/login")
+async def login(request: AuthLoginRequest):
+    """Authenticates technician using corporate email AND team passphrase."""
+    email = (request.email or "").strip().lower()
+    passphrase = (request.passphrase or "").strip()
+
+    if not email:
+        raise HTTPException(status_code=400, detail="Company email is required.")
+
+    if not email.endswith(config.ALLOWED_EMAIL_DOMAIN.lower()):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Access denied. Email must end with '{config.ALLOWED_EMAIL_DOMAIN}'."
+        )
+
+    if not passphrase:
+        raise HTTPException(status_code=400, detail="Team passphrase is required.")
+
+    if config.APP_PASSPHRASE and passphrase != config.APP_PASSPHRASE:
+        raise HTTPException(status_code=401, detail="Invalid AMPM team passphrase.")
+
+    return {
+        "status": "success",
+        "token": f"email_token_{email}",
+        "user": email,
+        "auth_type": "email_and_passphrase"
+    }
+
+
+
+@app.get("/api/auth/verify")
+async def verify_auth_endpoint(auth_data: dict = Depends(check_access_authorization)):
+    """Verifies if current session token/passphrase is valid."""
+    return {
+        "status": "authenticated",
+        "require_auth": config.REQUIRE_AUTH,
+        "auth_data": auth_data
+    }
+
+
 @app.get("/api/stats")
-def get_stats():
+def get_stats(auth_data: dict = Depends(check_access_authorization)):
     """Returns database and vector index status."""
     coll_name = getattr(vector_store, 'collection_name', getattr(vector_store, 'table_name', 'documents'))
     doc_count = vector_store.count()
@@ -79,15 +196,74 @@ def get_stats():
     }
 
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Header
+@app.post("/api/feedback")
+async def submit_feedback(
+    request: FeedbackRequest,
+    auth_data: dict = Depends(check_access_authorization)
+):
+    """Logs technician response feedback and indexes confirmed solutions into vectorstore."""
+    user_email = auth_data.get("user", "Anonymous Technician")
+    feedback_type = request.feedback_type.lower()
+
+    # 1. Log to Supabase ticket_feedback table if configured
+    if config.SUPABASE_URL and (config.SUPABASE_KEY or config.SUPABASE_SERVICE_ROLE_KEY):
+        try:
+            from supabase import create_client
+            key = config.SUPABASE_SERVICE_ROLE_KEY or config.SUPABASE_KEY
+            client = create_client(config.SUPABASE_URL, key)
+            client.table("ticket_feedback").insert({
+                "question": request.question,
+                "answer": request.answer,
+                "provider": request.provider,
+                "feedback_type": feedback_type,
+                "category": request.category or "General",
+                "user_email": user_email,
+                "notes": request.notes
+            }).execute()
+        except Exception as e:
+            print(f"[Warning] Failed to insert feedback to Supabase: {e}")
+
+    # 2. If technician marked "resolved" (This fixed the issue), auto-index confirmed fix into Vector Store
+    indexed_as_solution = False
+    if feedback_type == "resolved":
+        import uuid
+        fix_id = f"fix-{uuid.uuid4().hex[:8]}"
+        fix_text = f"Confirmed Solution for Problem: {request.question}\n\nVerified Technician Fix:\n{request.answer}"
+        fix_chunk = {
+            "id": fix_id,
+            "text": fix_text,
+            "metadata": {
+                "file_name": "Confirmed_Field_Fixes.kb",
+                "category": "Confirmed Fixes",
+                "topic_title": f"Verified Fix: {request.question[:60]}",
+                "page_number": 1,
+                "confirmed_by": user_email
+            }
+        }
+        try:
+            vector_store.add_chunks([fix_chunk])
+            indexed_as_solution = True
+        except Exception as e:
+            print(f"[Warning] Could not ingest confirmed fix chunk: {e}")
+
+    return {
+        "status": "success",
+        "feedback_type": feedback_type,
+        "indexed_as_solution": indexed_as_solution,
+        "message": "Thank you! Feedback recorded successfully."
+    }
+
 
 @app.post("/api/chat")
+
 async def chat(
     request: ChatRequest,
+    auth_data: dict = Depends(check_access_authorization),
     x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-Api-Key"),
     x_groq_api_key: Optional[str] = Header(None, alias="X-Groq-Api-Key"),
     x_tavily_api_key: Optional[str] = Header(None, alias="X-Tavily-Api-Key")
 ):
+
     """Processes technician question through RAG pipeline and returns cited answer."""
     if not request.question.strip() and not request.images and not request.attachments:
         raise HTTPException(status_code=400, detail="Question or attachments cannot be empty.")
@@ -118,8 +294,12 @@ async def chat(
 
 
 @app.post("/api/ingest")
-async def ingest_files(files: List[UploadFile] = File(...)):
+async def ingest_files(
+    files: List[UploadFile] = File(...),
+    auth_data: dict = Depends(check_access_authorization)
+):
     """Uploads and ingests PDF and CHM manuals into vector store."""
+
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded.")
 
