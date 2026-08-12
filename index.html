@@ -43,7 +43,6 @@
         <select id="providerSelect" class="select-control">
           <option value="gemini" selected>Google Gemini 2.5 Flash</option>
           <option value="groq">Groq API (Llama-3.3)</option>
-          <option value="ollama">Ollama (Local Server)</option>
         </select>
       </div>
 
@@ -186,10 +185,7 @@
 
         <div class="form-group">
           <label for="passphraseInput" class="section-label">TEAM PASSPHRASE</label>
-          <div class="key-input-group">
-            <input type="password" id="passphraseInput" class="input-control" placeholder="Enter team passphrase..." required autocomplete="current-password">
-            <button type="button" class="icon-toggle-btn" id="togglePassphrase" title="Show/Hide">👁️</button>
-          </div>
+          <input type="password" id="passphraseInput" class="input-control" placeholder="Enter team passphrase..." required autocomplete="current-password">
         </div>
 
         <div id="authError" class="auth-error-msg hidden"></div>
