@@ -111,40 +111,44 @@ class SupabaseVectorStore:
 
         if key_terms:
             try:
-                # We will track how many distinct terms each document matches
+                # We track how many distinct terms each document matches
                 keyword_hits = {}
                 
-                for term in key_terms[:10]: # Search up to top 10 key terms
-                    kw_res = self.client.table(self.table_name).select("id, text, metadata").ilike("text", f"%{term}%").limit(20).execute()
+                # Step 1: Fetch only IDs (lightweight) with a larger limit to ensure we don't miss documents at the end of the database
+                for term in key_terms[:8]:
+                    kw_res = self.client.table(self.table_name).select("id").ilike("text", f"%{term}%").limit(150).execute()
                     if kw_res.data:
                         for row in kw_res.data:
                             c_id = row.get("id")
-                            if c_id not in keyword_hits:
-                                keyword_hits[c_id] = {"count": 0, "row": row}
-                            keyword_hits[c_id]["count"] += 1
+                            keyword_hits[c_id] = keyword_hits.get(c_id, 0) + 1
 
-                # Inject or boost candidates based on term frequency
-                for c_id, hit_data in keyword_hits.items():
-                    count = hit_data["count"]
-                    row = hit_data["row"]
+                # Step 2: Identify candidates that matched multiple keywords or are already in vector results
+                best_c_ids = [c_id for c_id, count in keyword_hits.items() if count >= 2 or c_id in combined_matches]
+                
+                if best_c_ids:
+                    # Fetch the full text for these candidates
+                    best_res = self.client.table(self.table_name).select("id, text, metadata").in_("id", best_c_ids).execute()
                     
-                    if c_id in combined_matches:
-                        # Boost existing vector search candidate (+0.08 per matched keyword)
-                        combined_matches[c_id]["score"] += (count * 0.08)
-                    else:
-                        # Inject new candidate. 
-                        # Requires at least 2 distinct keyword matches to be considered somewhat relevant.
-                        # Base score is 0.15 + (count * 0.10). 
-                        # To pass the 0.40 threshold in engine.py purely via keywords, it needs >= 3 matches.
-                        new_score = 0.15 + (count * 0.10)
-                        if new_score >= 0.35: # Only inject if it has a chance to be relevant
-                            combined_matches[c_id] = {
-                                "id": c_id,
-                                "text": row.get("text"),
-                                "metadata": row.get("metadata", {}),
-                                "score": new_score,
-                                "distance": 1.0 - new_score
-                            }
+                    if best_res.data:
+                        for row in best_res.data:
+                            c_id = row["id"]
+                            count = keyword_hits.get(c_id, 0)
+                            
+                            if c_id in combined_matches:
+                                # Boost existing vector search candidate (+0.08 per matched keyword)
+                                combined_matches[c_id]["score"] += (count * 0.08)
+                            else:
+                                # Inject new candidate. 
+                                # Requires at least 2 distinct keyword matches.
+                                new_score = 0.15 + (count * 0.10)
+                                if new_score >= 0.35: # Only inject if it has a chance to be relevant
+                                    combined_matches[c_id] = {
+                                        "id": c_id,
+                                        "text": row.get("text"),
+                                        "metadata": row.get("metadata", {}),
+                                        "score": new_score,
+                                        "distance": 1.0 - new_score
+                                    }
                             
             except Exception as e:
                 print(f"[Warning] Keyword search error: {e}")
