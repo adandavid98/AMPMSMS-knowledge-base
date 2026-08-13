@@ -298,66 +298,80 @@ async def ingest_files(
     files: List[UploadFile] = File(...),
     auth_data: dict = Depends(check_access_authorization)
 ):
-    """Uploads and ingests PDF and CHM manuals into vector store."""
+    """Uploads and ingests PDF, CHM, HTML, and TXT manuals into vector store."""
 
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded.")
 
-    upload_dir = Path(__file__).parent / "sample_docs"
-    upload_dir.mkdir(exist_ok=True)
+    try:
+        import tempfile
+        upload_dir = Path(tempfile.gettempdir()) / "sms_ingest_temp"
+        upload_dir.mkdir(parents=True, exist_ok=True)
 
-    from ingestion import parse_document, TextChunker
-    chunker = TextChunker()
+        from ingestion import parse_document, TextChunker
+        chunker = TextChunker()
 
-    processed_files = []
-    failed_files = []
-    total_added_chunks = 0
+        processed_files = []
+        failed_files = []
+        total_added_chunks = 0
 
-    for upload_file in files:
-        ext = Path(upload_file.filename).suffix.lower()
-        if ext not in [".pdf", ".chm", ".html", ".htm", ".txt", ".log"]:
-            continue
-
-        file_path = upload_dir / upload_file.filename
-        try:
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(upload_file.file, buffer)
-
-            pages = parse_document(str(file_path))
-            if not pages:
-                print(f"[Warning] No content parsed from {upload_file.filename}")
-                failed_files.append({"file": upload_file.filename, "reason": "No readable content found"})
+        for upload_file in files:
+            ext = Path(upload_file.filename).suffix.lower()
+            if ext not in [".pdf", ".chm", ".html", ".htm", ".txt", ".log"]:
                 continue
 
-            chunks = chunker.chunk_pages(pages)
-            if not chunks:
-                print(f"[Warning] No chunks generated for {upload_file.filename}")
-                failed_files.append({"file": upload_file.filename, "reason": "No text chunks generated"})
-                continue
+            file_path = upload_dir / upload_file.filename
+            try:
+                with open(file_path, "wb") as buffer:
+                    shutil.copyfileobj(upload_file.file, buffer)
 
-            added = vector_store.add_chunks(chunks)
-            total_added_chunks += added
-            processed_files.append(upload_file.filename)
+                pages = parse_document(str(file_path))
+                if not pages:
+                    print(f"[Warning] No content parsed from {upload_file.filename}")
+                    failed_files.append({"file": upload_file.filename, "reason": "No readable content found"})
+                    continue
 
-        except Exception as file_err:
-            import traceback
-            traceback.print_exc()
-            print(f"[Error] Ingestion failed for {upload_file.filename}: {file_err}")
-            failed_files.append({"file": upload_file.filename, "reason": str(file_err)})
+                chunks = chunker.chunk_pages(pages)
+                if not chunks:
+                    print(f"[Warning] No chunks generated for {upload_file.filename}")
+                    failed_files.append({"file": upload_file.filename, "reason": "No text chunks generated"})
+                    continue
 
-    if not processed_files and failed_files:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ingestion failed for {failed_files[0]['file']}: {failed_files[0]['reason']}"
-        )
+                added = vector_store.add_chunks(chunks)
+                total_added_chunks += added
+                processed_files.append(upload_file.filename)
 
-    return {
-        "message": f"Successfully ingested {len(processed_files)} file(s).",
-        "processed_files": processed_files,
-        "failed_files": failed_files,
-        "total_chunks": total_added_chunks,
-        "current_total_chunks": vector_store.count()
-    }
+            except Exception as file_err:
+                import traceback
+                traceback.print_exc()
+                print(f"[Error] Ingestion failed for {upload_file.filename}: {file_err}")
+                failed_files.append({"file": upload_file.filename, "reason": str(file_err)})
+            finally:
+                if file_path.exists():
+                    try:
+                        file_path.unlink()
+                    except Exception:
+                        pass
+
+        if not processed_files and failed_files:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ingestion failed for {failed_files[0]['file']}: {failed_files[0]['reason']}"
+            )
+
+        return {
+            "message": f"Successfully ingested {len(processed_files)} file(s).",
+            "processed_files": processed_files,
+            "failed_files": failed_files,
+            "total_chunks": total_added_chunks,
+            "current_total_chunks": vector_store.count()
+        }
+    except HTTPException:
+        raise
+    except Exception as top_err:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=f"Server error: {str(top_err)}")
 
 
 if __name__ == "__main__":
