@@ -310,6 +310,7 @@ async def ingest_files(
     chunker = TextChunker()
 
     processed_files = []
+    failed_files = []
     total_added_chunks = 0
 
     for upload_file in files:
@@ -318,19 +319,42 @@ async def ingest_files(
             continue
 
         file_path = upload_dir / upload_file.filename
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(upload_file.file, buffer)
+        try:
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(upload_file.file, buffer)
 
-        pages = parse_document(str(file_path))
-        chunks = chunker.chunk_pages(pages)
-        added = vector_store.add_chunks(chunks)
-        
-        total_added_chunks += added
-        processed_files.append(upload_file.filename)
+            pages = parse_document(str(file_path))
+            if not pages:
+                print(f"[Warning] No content parsed from {upload_file.filename}")
+                failed_files.append({"file": upload_file.filename, "reason": "No readable content found"})
+                continue
+
+            chunks = chunker.chunk_pages(pages)
+            if not chunks:
+                print(f"[Warning] No chunks generated for {upload_file.filename}")
+                failed_files.append({"file": upload_file.filename, "reason": "No text chunks generated"})
+                continue
+
+            added = vector_store.add_chunks(chunks)
+            total_added_chunks += added
+            processed_files.append(upload_file.filename)
+
+        except Exception as file_err:
+            import traceback
+            traceback.print_exc()
+            print(f"[Error] Ingestion failed for {upload_file.filename}: {file_err}")
+            failed_files.append({"file": upload_file.filename, "reason": str(file_err)})
+
+    if not processed_files and failed_files:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ingestion failed for {failed_files[0]['file']}: {failed_files[0]['reason']}"
+        )
 
     return {
         "message": f"Successfully ingested {len(processed_files)} file(s).",
         "processed_files": processed_files,
+        "failed_files": failed_files,
         "total_chunks": total_added_chunks,
         "current_total_chunks": vector_store.count()
     }
