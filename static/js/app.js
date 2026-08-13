@@ -357,6 +357,132 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderAttachmentPreviews();
             });
         });
+
+        updateSendBtnVisibility();
+    }
+
+    // Dynamic Search Input Height and Send Button Visibility
+    function updateChatInputHeight() {
+        chatInput.style.height = 'auto';
+        chatInput.style.height = Math.min(chatInput.scrollHeight, 125) + 'px';
+    }
+
+    function updateSendBtnVisibility() {
+        const text = chatInput.value.trim();
+        const hasAttachments = (attachedImages && attachedImages.length > 0) || (attachedTextFiles && attachedTextFiles.length > 0);
+        if (text.length > 0 || hasAttachments) {
+            sendBtn.classList.remove('hidden');
+        } else {
+            sendBtn.classList.add('hidden');
+        }
+    }
+
+    chatInput.addEventListener('input', () => {
+        updateChatInputHeight();
+        updateSendBtnVisibility();
+    });
+
+    chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (!sendBtn.disabled && (chatInput.value.trim() || attachedImages.length || attachedTextFiles.length)) {
+                chatForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+            }
+        }
+    });
+
+    const mainContent = document.getElementById('mainContent');
+    const newChatBtn = document.getElementById('newChatBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    let currentChatAbortController = null;
+    let currentSubmittedPrompt = '';
+    let currentTypingIndicatorId = null;
+    let currentUserMsgId = null;
+    let isUserCancelledQuery = false;
+
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            isUserCancelledQuery = true;
+            if (currentChatAbortController) {
+                currentChatAbortController.abort();
+                currentChatAbortController = null;
+            }
+
+            if (currentTypingIndicatorId) {
+                removeTypingIndicator(currentTypingIndicatorId);
+                currentTypingIndicatorId = null;
+            }
+
+            if (currentUserMsgId) {
+                const userRow = document.getElementById(currentUserMsgId);
+                if (userRow) userRow.remove();
+                currentUserMsgId = null;
+            }
+
+            // Restore prompt text back into input field for editing
+            if (currentSubmittedPrompt) {
+                chatInput.value = currentSubmittedPrompt;
+                updateChatInputHeight();
+            }
+
+            cancelBtn.classList.add('hidden');
+            sendBtn.disabled = false;
+            updateSendBtnVisibility();
+            chatInput.focus();
+        });
+    }
+
+    function activateChatMode() {
+        if (mainContent && mainContent.classList.contains('initial-center-mode')) {
+            mainContent.classList.remove('initial-center-mode');
+            mainContent.classList.add('active-chat-mode');
+            if (messagesContainer) {
+                messagesContainer.classList.remove('hidden');
+            }
+        }
+    }
+
+    function resetToInitialMode() {
+        if (currentChatAbortController) {
+            currentChatAbortController.abort();
+            currentChatAbortController = null;
+        }
+
+        conversationHistory = [];
+        attachedImages = [];
+        attachedTextFiles = [];
+        renderAttachmentPreviews();
+        chatInput.value = '';
+        chatInput.style.height = 'auto';
+        sendBtn.disabled = false;
+        if (cancelBtn) cancelBtn.classList.add('hidden');
+        updateSendBtnVisibility();
+
+        if (messagesContainer) {
+            messagesContainer.innerHTML = `
+                <div class="message-row assistant">
+                  <div class="message-avatar">AI</div>
+                  <div class="message-bubble">
+                    Hello! I am your <strong>AMPM Service POS Troubleshooting Assistant</strong>.<br><br>
+                    Describe a symptom on a register, PIN pad, or server (e.g. <em>"M400 cash-back 10x error"</em> or
+                    <em>"Buypass error 91 host timeout"</em>) and I will provide fast, cited instructions pulled directly from
+                    internal documentation.
+                  </div>
+                </div>
+            `;
+            messagesContainer.classList.add('hidden');
+        }
+
+        if (mainContent) {
+            mainContent.classList.remove('active-chat-mode');
+            mainContent.classList.add('initial-center-mode');
+        }
+
+        chatInput.focus();
+    }
+
+    if (newChatBtn) {
+        newChatBtn.addEventListener('click', resetToInitialMode);
     }
 
     // Event listener for chat submission
@@ -364,6 +490,18 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const question = chatInput.value.trim();
         if (!question && attachedImages.length === 0 && attachedTextFiles.length === 0) return;
+
+        isUserCancelledQuery = false;
+        currentSubmittedPrompt = question;
+
+        // Abort any existing in-flight request
+        if (currentChatAbortController) {
+            currentChatAbortController.abort();
+        }
+        currentChatAbortController = new AbortController();
+
+        // Transition from initial center search mode to bottom active chat mode
+        activateChatMode();
 
         let displayMsg = question;
         if (attachedImages.length > 0) {
@@ -374,9 +512,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Render user message
-        appendMessage('user', displayMsg);
+        currentUserMsgId = appendMessage('user', displayMsg);
         chatInput.value = '';
+        chatInput.style.height = 'auto';
         sendBtn.disabled = true;
+        sendBtn.classList.add('hidden');
+        if (cancelBtn) cancelBtn.classList.remove('hidden');
 
         const currentImages = attachedImages.map(i => i.data);
         const currentAttachments = attachedTextFiles.map(t => ({ name: t.name, content: t.content }));
@@ -388,6 +529,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Render typing indicator
         const typingId = appendTypingIndicator();
+        currentTypingIndicatorId = typingId;
 
         // Build Headers
         let headers = { 'Content-Type': 'application/json' };
@@ -405,6 +547,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: headers,
+                signal: currentChatAbortController.signal,
                 body: JSON.stringify({
                     question: question,
                     provider: providerSelect.value,
@@ -417,6 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             removeTypingIndicator(typingId);
+            currentTypingIndicatorId = null;
 
             if (response.status === 401) {
                 appendMessage('assistant', '🔒 **Authentication Required**: Session expired or unauthorized. Please log in.');
@@ -441,11 +585,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 appendMessage('assistant', `⚠️ **Error**: ${err.detail || 'Failed to process request.'}`);
             }
         } catch (error) {
+            if (error.name === 'AbortError') {
+                return;
+            }
+            updateSystemStatusBadge(false, 'System Offline');
             removeTypingIndicator(typingId);
             appendMessage('assistant', `⚠️ **Network Error**: Could not connect to API server (${error.message}).`);
         } finally {
+            if (cancelBtn) cancelBtn.classList.add('hidden');
             sendBtn.disabled = false;
-            chatInput.focus();
+            updateSendBtnVisibility();
+            if (!isUserCancelledQuery) {
+                chatInput.focus();
+            }
+            currentChatAbortController = null;
+            currentTypingIndicatorId = null;
+            currentUserMsgId = null;
         }
     });
 
@@ -544,6 +699,19 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchStats();
     }
 
+    const statusBadge = document.querySelector('.status-badge');
+
+    function updateSystemStatusBadge(isOnline, labelText = null) {
+        if (!statusBadge) return;
+        if (isOnline) {
+            statusBadge.classList.remove('offline');
+            statusBadge.innerHTML = `<span class="status-dot"></span>${labelText || 'System Online'}`;
+        } else {
+            statusBadge.classList.add('offline');
+            statusBadge.innerHTML = `<span class="status-dot offline-dot"></span>${labelText || 'System Offline'}`;
+        }
+    }
+
     async function fetchStats() {
         try {
             const res = await fetch('/api/stats', {
@@ -557,9 +725,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await res.json();
                 statChunks.textContent = data.total_chunks !== undefined ? data.total_chunks : (data.total_documents || 0);
                 statDocs.textContent = data.collection_name || 'documents';
+                updateSystemStatusBadge(true, 'System Online');
+            } else {
+                updateSystemStatusBadge(false, 'Server Error');
             }
         } catch (e) {
             console.warn('Could not fetch stats', e);
+            updateSystemStatusBadge(false, 'System Offline');
         }
     }
 
