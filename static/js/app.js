@@ -504,8 +504,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateMessageContent(statusId, `✅ **Ingestion Complete!**\nProcessed **${data.total_chunks}** vector chunk(s) from uploaded document(s).`);
                 fetchStats();
             } else {
-                const err = await res.json().catch(() => ({ detail: 'Ingestion failed.' }));
-                updateMessageContent(statusId, `❌ **Ingestion Failed**: ${err.detail || 'Check server logs.'}`);
+                const rawText = await res.text();
+                let errMsg = 'Ingestion failed.';
+                try {
+                    const err = JSON.parse(rawText);
+                    errMsg = err.detail || errMsg;
+                } catch (e) {
+                    errMsg = `HTTP ${res.status}: ${rawText.substring(0, 100)}`;
+                }
+                updateMessageContent(statusId, `❌ **Ingestion Failed**: ${errMsg}`);
             }
         } catch (e) {
             updateMessageContent(statusId, `❌ **Error uploading file**: ${e.message}`);
