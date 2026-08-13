@@ -120,17 +120,31 @@
     </aside>
 
     <!-- Main Chat Workspace -->
-    <main class="main-content">
+    <main class="main-content initial-center-mode" id="mainContent">
       <header class="chat-header">
-        <div class="chat-header-title">SMS Knowledge Base</div>
+        <div class="chat-header-left">
+          <div class="chat-header-title">SMS Knowledge Base</div>
+          <button type="button" id="newChatBtn" class="new-chat-btn" title="Start new chat session">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>New Chat</span>
+          </button>
+        </div>
         <div class="status-badge">
           <span class="status-dot"></span>
           System Online
         </div>
       </header>
 
+      <!-- Center Hero Header (Initial State) -->
+      <div class="hero-container" id="heroContainer">
+        <h1 class="hero-title">How can I help troubleshoot today?</h1>
+      </div>
+
       <!-- Message History Container -->
-      <div class="messages-container" id="messagesContainer">
+      <div class="messages-container hidden" id="messagesContainer">
         <div class="message-row assistant">
           <div class="message-avatar">AI</div>
           <div class="message-bubble">
@@ -143,25 +157,40 @@
       </div>
 
       <!-- Input Bar -->
-      <div class="chat-input-container">
+      <div class="chat-input-container" id="chatInputContainer">
         <!-- Attachments Preview Container -->
         <div id="attachmentsPreviewContainer" class="attachments-preview-container hidden"></div>
 
         <form class="chat-form" id="chatForm">
-          <button type="button" id="attachBtn" class="attach-btn"
-            title="Attach file or image (or Ctrl+V to paste screenshot)">
-            +
-          </button>
-          <input type="file" id="promptFileInput" multiple accept="image/*,.png,.jpg,.jpeg,.webp,.pdf,.txt,.log"
-            style="display: none;">
+          <div class="search-input-capsule">
+            <button type="button" id="attachBtn" class="attach-btn"
+              title="Attach file or image (or Ctrl+V to paste screenshot)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+            <input type="file" id="promptFileInput" multiple accept="image/*,.png,.jpg,.jpeg,.webp,.pdf,.txt,.log"
+              style="display: none;">
 
-          <input type="text" id="chatInput" class="chat-input"
-            placeholder="Describe register/server symptom or paste screenshot (Ctrl+V)..." autocomplete="off">
-          <button type="submit" class="send-btn" id="sendBtn">
-            <span>Send</span>
-            <span>➔</span>
-          </button>
+            <textarea id="chatInput" class="chat-input" rows="1"
+              placeholder="Describe register/server symptom or paste screenshot (Ctrl+V)..." autocomplete="off"></textarea>
+
+            <button type="submit" class="send-btn hidden" id="sendBtn" title="Send query">
+              <svg class="send-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5"></line>
+                <polyline points="5 12 12 5 19 12"></polyline>
+              </svg>
+            </button>
+
+            <button type="button" class="cancel-btn hidden" id="cancelBtn" title="Cancel generation">
+              <svg class="stop-icon" width="14" height="14" viewBox="0 0 24 24" fill="#EF4444">
+                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+              </svg>
+            </button>
+          </div>
         </form>
+        <div class="disclaimer-text">AMPM Service</div>
       </div>
     </main>
 
