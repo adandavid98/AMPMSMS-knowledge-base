@@ -24,71 +24,77 @@ class GeminiLLMProvider(BaseLLMProvider):
         return "Google Gemini API"
 
     def generate_answer(self, system_prompt: str, user_prompt: str, api_key: str = None, images: list = None) -> str:
-        active_key = api_key or self.api_key
-        if not active_key:
+        active_key_raw = api_key or self.api_key
+        if not active_key_raw:
             return "[Error: GEMINI_API_KEY missing. Please set your key in the Web UI sidebar or .env file.]"
 
-        try:
-            import google.generativeai as genai
-            import base64
-            import io
-            from PIL import Image
+        # Support comma-separated API keys for rotation/failover (e.g. key1,key2,key3)
+        keys = [k.strip() for k in active_key_raw.split(",") if k.strip()]
+        
+        import google.generativeai as genai
+        import base64
+        import io
+        from PIL import Image
 
-            genai.configure(api_key=active_key)
-            
-            # Prepare contents payload (text prompt + images)
-            contents = [user_prompt]
-            if images:
-                for img_item in images:
+        last_error = None
+
+        for active_key in keys:
+            try:
+                genai.configure(api_key=active_key)
+                
+                # Prepare contents payload (text prompt + images)
+                contents = [user_prompt]
+                if images:
+                    for img_item in images:
+                        try:
+                            if isinstance(img_item, str):
+                                b64_data = img_item.split(",")[-1]
+                                img_bytes = base64.b64decode(b64_data)
+                                pil_img = Image.open(io.BytesIO(img_bytes))
+                                contents.append(pil_img)
+                            elif isinstance(img_item, dict) and "data" in img_item:
+                                b64_data = img_item["data"].split(",")[-1]
+                                img_bytes = base64.b64decode(b64_data)
+                                pil_img = Image.open(io.BytesIO(img_bytes))
+                                contents.append(pil_img)
+                        except Exception as img_err:
+                            print(f"[Warning] Failed to decode image attachment: {img_err}")
+
+                # List of active Gemini model candidates
+                raw_candidates = [self.model_name, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest", "gemini-3.5-flash"]
+                candidates = []
+                for c in raw_candidates:
+                    if c and c not in candidates:
+                        candidates.append(c)
+                
+                for model_candidate in candidates:
+                    clean_name = model_candidate.replace("models/", "")
                     try:
-                        if isinstance(img_item, str):
-                            # Assume base64 string
-                            b64_data = img_item.split(",")[-1]
-                            img_bytes = base64.b64decode(b64_data)
-                            pil_img = Image.open(io.BytesIO(img_bytes))
-                            contents.append(pil_img)
-                        elif isinstance(img_item, dict) and "data" in img_item:
-                            b64_data = img_item["data"].split(",")[-1]
-                            img_bytes = base64.b64decode(b64_data)
-                            pil_img = Image.open(io.BytesIO(img_bytes))
-                            contents.append(pil_img)
-                    except Exception as img_err:
-                        print(f"[Warning] Failed to decode image attachment: {img_err}")
+                        model = genai.GenerativeModel(
+                            model_name=clean_name,
+                            system_instruction=system_prompt
+                        )
+                        response = model.generate_content(contents)
+                        if response and hasattr(response, "text") and response.text:
+                            return response.text
+                    except Exception as model_err:
+                        err_str = str(model_err)
+                        print(f"[Gemini Warning] Model {clean_name} with key ...{active_key[-6:]} failed: {err_str}")
+                        last_error = err_str
+                        # If quota exceeded, break model loop to try the NEXT API key in keys
+                        if "429" in err_str or "quota" in err_str.lower():
+                            break
+                        continue
+            except Exception as key_err:
+                last_error = str(key_err)
+                print(f"[Gemini Key Error] Key ...{active_key[-6:]} failed: {key_err}")
+                continue
 
-            # Unique list of active, valid Gemini API model names supported by your key
-            raw_candidates = [self.model_name, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest", "gemini-3.5-flash"]
-            candidates = []
-            for c in raw_candidates:
-                if c and c not in candidates:
-                    candidates.append(c)
-            
-            last_error = None
-            for model_candidate in candidates:
-                clean_name = model_candidate.replace("models/", "")
-                try:
-                    model = genai.GenerativeModel(
-                        model_name=clean_name,
-                        system_instruction=system_prompt
-                    )
-                    response = model.generate_content(contents)
-                    if response and hasattr(response, "text") and response.text:
-                        return response.text
-                except Exception as model_err:
-                    err_str = str(model_err)
-                    print(f"[Gemini Warning] Model {clean_name} failed: {err_str}")
-                    last_error = err_str
-                    # Continue trying next candidate model in list since each model has separate quota buckets
-                    continue
+        if "429" in str(last_error) or "quota" in str(last_error).lower():
+            return (
+                "⚠️ **Gemini API Quota Limit Reached (HTTP 429)**\n\n"
+                "All configured Gemini API keys have temporarily reached Google's quota limit for today.\n\n"
+                "**Solution**: Switch to **Groq API** in the left sidebar under *LLM Provider* for instant responses."
+            )
 
-            if "429" in str(last_error) or "quota" in str(last_error).lower():
-                return (
-                    "⚠️ **Gemini API Quota Limit Reached (HTTP 429)**\n\n"
-                    "Your free Gemini API key has temporarily reached Google's quota limit for today.\n\n"
-                    "**Solutions**:\n"
-                    "1. Switch to **Groq API** in the left sidebar under *LLM Provider* for instant responses with zero rate limits.\n"
-                    "2. Add your own custom Gemini API Key in the *API Key Settings* sidebar accordion."
-                )
-
-            return f"[Gemini API Error: {last_error or 'Could not generate response with available Gemini models.'}]"
-        except Exception as e:
-            return f"[Gemini Error: {str(e)}]"
+        return f"[Gemini API Error: {last_error or 'Could not generate response with available Gemini models.'}]"

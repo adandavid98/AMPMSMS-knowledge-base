@@ -2,6 +2,7 @@ import config
 from .base import BaseLLMProvider
 from .gemini_provider import GeminiLLMProvider
 from .groq_provider import GroqLLMProvider
+from .openrouter_provider import OpenRouterLLMProvider
 from .ollama_provider import OllamaLLMProvider
 
 def get_llm_provider(name: str = None) -> BaseLLMProvider:
@@ -15,7 +16,9 @@ def get_llm_provider(name: str = None) -> BaseLLMProvider:
         return GeminiLLMProvider()
     elif provider_name == "groq":
         return GroqLLMProvider()
+    elif provider_name in ["openrouter", "open_router"]:
+        return OpenRouterLLMProvider()
     elif provider_name == "ollama":
         return OllamaLLMProvider()
     else:
-        raise ValueError(f"Unknown LLM provider '{provider_name}'. Supported options: gemini, groq, ollama")
+        raise ValueError(f"Unknown LLM provider '{provider_name}'. Supported options: gemini, groq, openrouter, ollama")
