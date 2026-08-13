@@ -314,7 +314,7 @@ async def ingest_files(
 
     for upload_file in files:
         ext = Path(upload_file.filename).suffix.lower()
-        if ext not in [".pdf", ".chm"]:
+        if ext not in [".pdf", ".chm", ".html", ".htm", ".txt", ".log"]:
             continue
 
         file_path = upload_dir / upload_file.filename
