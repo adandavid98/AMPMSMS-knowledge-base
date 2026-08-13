@@ -471,18 +471,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function uploadFiles(files) {
         const formData = new FormData();
+        const validExts = ['.pdf', '.chm', '.html', '.htm', '.txt', '.log'];
         for (let file of files) {
-            if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+            const fileName = file.name.toLowerCase();
+            if (validExts.some(ext => fileName.endsWith(ext))) {
                 formData.append('files', file);
             }
         }
 
         if (!formData.has('files')) {
-            alert('Please select valid PDF files.');
+            alert('Please select valid documentation files (.pdf, .chm, .html, .htm, .txt, .log).');
             return;
         }
 
-        const statusId = appendMessage('assistant', '📄 *Uploading & parsing PDF documentation...*');
+        const statusId = appendMessage('assistant', '📄 *Uploading & parsing documentation...*');
 
         try {
             const res = await fetch('/api/ingest', {
