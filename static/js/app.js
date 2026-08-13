@@ -504,7 +504,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateMessageContent(statusId, `✅ **Ingestion Complete!**\nProcessed **${data.total_chunks}** vector chunk(s) from uploaded document(s).`);
                 fetchStats();
             } else {
-                updateMessageContent(statusId, '❌ **Ingestion Failed**. Check server logs.');
+                const err = await res.json().catch(() => ({ detail: 'Ingestion failed.' }));
+                updateMessageContent(statusId, `❌ **Ingestion Failed**: ${err.detail || 'Check server logs.'}`);
             }
         } catch (e) {
             updateMessageContent(statusId, `❌ **Error uploading file**: ${e.message}`);
