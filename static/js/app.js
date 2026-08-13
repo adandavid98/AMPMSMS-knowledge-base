@@ -470,53 +470,78 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     async function uploadFiles(files) {
-        const formData = new FormData();
         const validExts = ['.pdf', '.chm', '.html', '.htm', '.txt', '.log'];
-        for (let file of files) {
+        const validFiles = Array.from(files).filter(file => {
             const fileName = file.name.toLowerCase();
-            if (validExts.some(ext => fileName.endsWith(ext))) {
-                formData.append('files', file);
-            }
-        }
+            return validExts.some(ext => fileName.endsWith(ext));
+        });
 
-        if (!formData.has('files')) {
+        if (validFiles.length === 0) {
             alert('Please select valid documentation files (.pdf, .chm, .html, .htm, .txt, .log).');
             return;
         }
 
-        const statusId = appendMessage('assistant', '📄 *Uploading & parsing documentation...*');
+        const totalFiles = validFiles.length;
+        const statusId = appendMessage('assistant', `📄 *Preparing to upload & ingest ${totalFiles} file(s)...*`);
 
-        try {
-            const res = await fetch('/api/ingest', {
-                method: 'POST',
-                headers: getAuthHeaders(),
-                body: formData
-            });
+        let totalChunksAdded = 0;
+        let successfulFiles = [];
+        let failedFiles = [];
 
-            if (res.status === 401) {
-                updateMessageContent(statusId, '🔒 **Authentication Required**: Please log in to ingest documents.');
-                showAuthOverlay();
-                return;
-            }
+        for (let i = 0; i < totalFiles; i++) {
+            const file = validFiles[i];
+            updateMessageContent(statusId, `📄 *Ingesting file [${i + 1}/${totalFiles}]: ${file.name}...*`);
 
-            if (res.ok) {
-                const data = await res.json();
-                updateMessageContent(statusId, `✅ **Ingestion Complete!**\nProcessed **${data.total_chunks}** vector chunk(s) from uploaded document(s).`);
-                fetchStats();
-            } else {
-                const rawText = await res.text();
-                let errMsg = 'Ingestion failed.';
-                try {
-                    const err = JSON.parse(rawText);
-                    errMsg = err.detail || errMsg;
-                } catch (e) {
-                    errMsg = `HTTP ${res.status}: ${rawText.substring(0, 100)}`;
+            const formData = new FormData();
+            formData.append('files', file);
+
+            try {
+                const res = await fetch('/api/ingest', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: formData
+                });
+
+                if (res.status === 401) {
+                    updateMessageContent(statusId, '🔒 **Authentication Required**: Please log in to ingest documents.');
+                    showAuthOverlay();
+                    return;
                 }
-                updateMessageContent(statusId, `❌ **Ingestion Failed**: ${errMsg}`);
+
+                if (res.ok) {
+                    const data = await res.json();
+                    totalChunksAdded += (data.total_chunks || 0);
+                    successfulFiles.push(file.name);
+                } else {
+                    const rawText = await res.text();
+                    let errMsg = 'Ingestion failed.';
+                    try {
+                        const err = JSON.parse(rawText);
+                        errMsg = err.detail || errMsg;
+                    } catch (e) {
+                        errMsg = `HTTP ${res.status}: ${rawText.substring(0, 80)}`;
+                    }
+                    failedFiles.push({ file: file.name, reason: errMsg });
+                }
+            } catch (e) {
+                failedFiles.push({ file: file.name, reason: e.message });
             }
-        } catch (e) {
-            updateMessageContent(statusId, `❌ **Error uploading file**: ${e.message}`);
         }
+
+        // Build final summary message
+        if (failedFiles.length === 0) {
+            updateMessageContent(statusId, `✅ **Batch Ingestion Complete!**\nSuccessfully processed **${successfulFiles.length} file(s)** (${totalChunksAdded} vector chunks added).`);
+        } else if (successfulFiles.length > 0) {
+            let summary = `⚠️ **Batch Ingestion Complete with warnings:**\n- **Success**: ${successfulFiles.length} file(s) (${totalChunksAdded} chunks)\n- **Failed**: ${failedFiles.length} file(s)\n\n**Failed Details:**\n`;
+            failedFiles.forEach(f => summary += `- \`${f.file}\`: ${f.reason}\n`);
+            updateMessageContent(statusId, summary);
+        } else {
+            let summary = `❌ **Batch Ingestion Failed for all ${failedFiles.length} file(s):**\n`;
+            failedFiles.forEach(f => summary += `- \`${f.file}\`: ${f.reason}\n`);
+            updateMessageContent(statusId, summary);
+        }
+
+        fetchStats();
     }
 
     async function fetchStats() {
