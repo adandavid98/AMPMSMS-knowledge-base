@@ -568,11 +568,13 @@ body {
   font-size: 2.25rem;
   font-weight: 700;
   letter-spacing: -0.025em;
-  background: linear-gradient(135deg, #FFFFFF 0%, #BAE6FD 55%, #38BDF8 100%);
+  background: linear-gradient(90deg, #FFFFFF 0%, #E0F2FE 55%, #38BDF8 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
+  transform: translateZ(0);
+  will-change: transform;
   margin-bottom: 0.5rem;
   text-align: center;
 }
