@@ -11,6 +11,7 @@ BASE_DIR = Path(__file__).parent.resolve()
 # API Keys & Endpoints
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
@@ -31,6 +32,7 @@ GEMINI_MODEL = "gemini-1.5-flash"  # Primary active Flash model
 GEMINI_EMBEDDING_MODEL = "models/gemini-embedding-001"
 
 GROQ_MODEL = "llama-3.3-70b-versatile"
+OPENROUTER_MODEL = "google/gemma-4-31b-it:free"
 OLLAMA_MODEL = "llama3"
 
 # Chunking & Storage
