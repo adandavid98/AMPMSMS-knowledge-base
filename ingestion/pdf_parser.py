@@ -28,9 +28,24 @@ class PDFParser:
             raise FileNotFoundError(f"PDF file not found: {file_path}")
 
         if self._fitz_available:
-            return self._parse_with_fitz(path)
+            pages = self._parse_with_fitz(path)
         else:
-            return self._parse_with_pypdf(path)
+            pages = self._parse_with_pypdf(path)
+
+        # Fallback for scanned/image PDFs with no extractable text stream
+        total_text_length = sum(len(p.get("text", "").strip()) for p in pages)
+        if total_text_length == 0:
+            title = path.stem.replace("_", " ").replace("-", " ").title()
+            return [{
+                "text": f"Document: {path.name}\nTitle: {title}\n(Scanned PDF Document - Image / Graphic Content)",
+                "page_number": 1,
+                "total_pages": max(len(pages), 1),
+                "topic_title": title,
+                "file_name": path.name,
+                "file_path": str(path.resolve())
+            }]
+
+        return pages
 
     def _parse_with_fitz(self, path: Path) -> List[Dict[str, Any]]:
         import fitz
