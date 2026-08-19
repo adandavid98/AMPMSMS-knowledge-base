@@ -624,6 +624,38 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Configure PDF.js Worker if available
+    if (typeof pdfjsLib !== 'undefined') {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    async function extractTextFromPDF(file) {
+        if (typeof pdfjsLib === 'undefined') return null;
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+            const pdf = await loadingTask.promise;
+            const pages = [];
+            const numPages = pdf.numPages;
+
+            for (let i = 1; i <= numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map(item => item.str).join(' ').trim();
+                pages.push({
+                    page_number: i,
+                    total_pages: numPages,
+                    text: pageText,
+                    topic_title: file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " ")
+                });
+            }
+            return pages;
+        } catch (err) {
+            console.warn('[PDF.js Warning] Client-side extraction failed, falling back to server upload:', err);
+            return null;
+        }
+    }
+
     async function uploadFiles(files) {
         const validExts = ['.pdf', '.chm', '.html', '.htm', '.txt', '.log'];
         const validFiles = Array.from(files).filter(file => {
@@ -648,17 +680,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
         for (let i = 0; i < totalFiles; i++) {
             const file = validFiles[i];
+            const isPdf = file.name.toLowerCase().endsWith('.pdf');
             updateMessageContent(statusId, `📄 *Ingesting file [${i + 1}/${totalFiles}]: ${file.name}...*`);
 
-            const formData = new FormData();
-            formData.append('files', file);
-
             try {
-                const res = await fetch('/api/ingest', {
-                    method: 'POST',
-                    headers: getAuthHeaders(),
-                    body: formData
-                });
+                let res;
+                let extractedPages = null;
+
+                // For PDF files, extract text in browser to bypass cloud upload limits (4.5MB)
+                if (isPdf) {
+                    extractedPages = await extractTextFromPDF(file);
+                }
+
+                if (extractedPages && extractedPages.length > 0) {
+                    // Send lightweight text payload (~50KB instead of 20MB)
+                    res = await fetch('/api/ingest_text', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...getAuthHeaders()
+                        },
+                        body: JSON.stringify({
+                            file_name: file.name,
+                            pages: extractedPages
+                        })
+                    });
+                } else {
+                    // Fallback to standard binary upload
+                    const formData = new FormData();
+                    formData.append('files', file);
+                    res = await fetch('/api/ingest', {
+                        method: 'POST',
+                        headers: getAuthHeaders(),
+                        body: formData
+                    });
+                }
 
                 if (res.status === 401) {
                     updateMessageContent(statusId, '🔒 **Authentication Required**: Please log in to ingest documents.');
