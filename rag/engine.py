@@ -91,7 +91,7 @@ class RAGEngine:
                     print(f"[Warning] Could not decode image for OCR: {img_err}")
                     continue
 
-            for model_name in ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-flash-latest"]:
+            for model_name in ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest"]:
                 try:
                     model = genai.GenerativeModel(model_name=model_name)
                     response = model.generate_content(contents)
