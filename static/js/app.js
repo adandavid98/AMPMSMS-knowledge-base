@@ -636,6 +636,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // Transition from initial welcome screen to active chat view so progress is immediately visible
+        activateChatMode();
+
         const totalFiles = validFiles.length;
         const statusId = appendMessage('assistant', `📄 *Preparing to upload & ingest ${totalFiles} file(s)...*`);
 
