@@ -374,6 +374,65 @@ async def ingest_files(
         raise HTTPException(status_code=400, detail=f"Server error: {str(top_err)}")
 
 
+class IngestPageItem(BaseModel):
+    page_number: int
+    total_pages: Optional[int] = 1
+    text: str
+    topic_title: Optional[str] = ""
+
+class IngestTextRequest(BaseModel):
+    file_name: str
+    pages: List[IngestPageItem]
+
+@app.post("/api/ingest_text")
+async def ingest_text(
+    req: IngestTextRequest,
+    auth_data: dict = Depends(check_access_authorization)
+):
+    """Directly ingests pre-extracted text pages (bypasses serverless file size limits)."""
+    try:
+        from ingestion.chunker import TextChunker
+        chunker = TextChunker()
+
+        formatted_pages = []
+        for p in req.pages:
+            formatted_pages.append({
+                "page_number": p.page_number,
+                "total_pages": p.total_pages or len(req.pages),
+                "text": p.text,
+                "topic_title": p.topic_title or req.file_name,
+                "file_name": req.file_name,
+                "file_path": req.file_name
+            })
+
+        # Fallback if no text extracted across pages
+        total_len = sum(len(p["text"].strip()) for p in formatted_pages)
+        if total_len == 0:
+            formatted_pages = [{
+                "page_number": 1,
+                "total_pages": 1,
+                "text": f"Document: {req.file_name}\nTitle: {req.file_name}\n(Scanned Document)",
+                "topic_title": req.file_name,
+                "file_name": req.file_name,
+                "file_path": req.file_name
+            }]
+
+        chunks = chunker.chunk_pages(formatted_pages)
+        added = vector_store.add_chunks(chunks)
+
+        return {
+            "message": f"Successfully ingested {req.file_name}",
+            "processed_files": [req.file_name],
+            "failed_files": [],
+            "total_chunks": added,
+            "current_total_chunks": vector_store.count()
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
