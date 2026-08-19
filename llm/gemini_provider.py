@@ -61,7 +61,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                             print(f"[Warning] Failed to decode image attachment: {img_err}")
 
                 # List of active Gemini model candidates
-                raw_candidates = [self.model_name, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest", "gemini-3.5-flash"]
+                raw_candidates = [self.model_name, "gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-pro-preview"]
                 candidates = []
                 for c in raw_candidates:
                     if c and c not in candidates:
