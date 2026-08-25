@@ -103,55 +103,60 @@ class SupabaseVectorStore:
         except Exception as e:
             print(f"[Warning] Vector search error: {e}")
 
-        # 3. Enhanced Multi-Term Keyword Search & Score Boosting
+        # 3. Enhanced Multi-Term Keyword & Topic Title Search
         raw_words = re.findall(r'[A-Za-z0-9_\-\.]{3,}', query)
-        stop_words = {"find", "documents", "only", "how", "can", "setup", "set", "using", "with", "from", "the", "for", "and", "that", "this", "what", "which", "your"}
-        # Sort terms by length descending to prioritize highly specific jargon
+        stop_words = {"find", "documents", "only", "how", "can", "setup", "set", "using", "with", "from", "the", "for", "and", "that", "this", "what", "which", "your", "are"}
         key_terms = sorted([w for w in raw_words if w.lower() not in stop_words and len(w) >= 3], key=len, reverse=True)
 
-        if key_terms:
-            try:
-                # We track how many distinct terms each document matches
-                keyword_hits = {}
-                
-                # Step 1: Fetch only IDs (lightweight) with a larger limit to ensure we don't miss documents at the end of the database
-                for term in key_terms[:8]:
-                    kw_res = self.client.table(self.table_name).select("id").ilike("text", f"%{term}%").limit(150).execute()
-                    if kw_res.data:
-                        for row in kw_res.data:
-                            c_id = row.get("id")
-                            keyword_hits[c_id] = keyword_hits.get(c_id, 0) + 1
-
-                # Step 2: Identify candidates that matched multiple keywords or are already in vector results
-                best_c_ids = [c_id for c_id, count in keyword_hits.items() if count >= 2 or c_id in combined_matches]
-                
-                if best_c_ids:
-                    # Fetch the full text for these candidates
-                    best_res = self.client.table(self.table_name).select("id, text, metadata").in_("id", best_c_ids).execute()
-                    
-                    if best_res.data:
-                        for row in best_res.data:
+        try:
+            # Step A: Topic Title N-Gram Matching (Extremely high relevance for topic titles)
+            words_filtered = [w for w in raw_words if w.lower() not in stop_words]
+            for n in range(min(len(words_filtered), 4), 1, -1):
+                for i in range(len(words_filtered) - n + 1):
+                    ngram = " ".join(words_filtered[i:i+n])
+                    title_res = self.client.table(self.table_name).select("id, text, metadata").ilike("metadata->>topic_title", f"%{ngram}%").limit(10).execute()
+                    if title_res.data:
+                        for row in title_res.data:
                             c_id = row["id"]
-                            count = keyword_hits.get(c_id, 0)
-                            
-                            if c_id in combined_matches:
-                                # Boost existing vector search candidate (+0.08 per matched keyword)
-                                combined_matches[c_id]["score"] += (count * 0.08)
-                            else:
-                                # Inject new candidate. 
-                                # Requires at least 2 distinct keyword matches.
-                                new_score = 0.15 + (count * 0.10)
-                                if new_score >= 0.35: # Only inject if it has a chance to be relevant
-                                    combined_matches[c_id] = {
-                                        "id": c_id,
-                                        "text": row.get("text"),
-                                        "metadata": row.get("metadata", {}),
-                                        "score": new_score,
-                                        "distance": 1.0 - new_score
-                                    }
-                            
-            except Exception as e:
-                print(f"[Warning] Keyword search error: {e}")
+                            combined_matches[c_id] = {
+                                "id": c_id,
+                                "text": row.get("text"),
+                                "metadata": row.get("metadata", {}),
+                                "score": 0.98,
+                                "distance": 0.02
+                            }
+
+            # Step B: Keyword Hits in Text & Metadata
+            keyword_hits = {}
+            for term in key_terms[:8]:
+                kw_res = self.client.table(self.table_name).select("id").ilike("text", f"%{term}%").limit(150).execute()
+                if kw_res.data:
+                    for row in kw_res.data:
+                        c_id = row.get("id")
+                        keyword_hits[c_id] = keyword_hits.get(c_id, 0) + 1
+
+            best_c_ids = [c_id for c_id, count in keyword_hits.items() if count >= 2 or c_id in combined_matches]
+            if best_c_ids:
+                best_res = self.client.table(self.table_name).select("id, text, metadata").in_("id", best_c_ids).execute()
+                if best_res.data:
+                    for row in best_res.data:
+                        c_id = row["id"]
+                        count = keyword_hits.get(c_id, 0)
+                        
+                        if c_id in combined_matches:
+                            combined_matches[c_id]["score"] += (count * 0.10)
+                        else:
+                            new_score = 0.50 + (count * 0.10)
+                            combined_matches[c_id] = {
+                                "id": c_id,
+                                "text": row.get("text"),
+                                "metadata": row.get("metadata", {}),
+                                "score": min(new_score, 0.90),
+                                "distance": 1.0 - min(new_score, 0.90)
+                            }
+                        
+        except Exception as e:
+            print(f"[Warning] Keyword / Title search error: {e}")
 
         # 4. Rerank & Sort Candidates
         sorted_chunks = sorted(combined_matches.values(), key=lambda x: x["score"], reverse=True)
