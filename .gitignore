@@ -1,0 +1,27 @@
+# Python & Virtual Environment
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local Databases & Vector Stores
+.chroma_db/
+*.db
+*.sqlite
+
+# Environment Variables & Secrets
+.env
+.env.local
+
+# Temporary Files & Ingestion Outputs
+temp_chm_*
+temp_*
+*.log
+
+# IDE & OS Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
