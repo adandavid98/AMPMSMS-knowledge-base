@@ -134,6 +134,15 @@ def check_access_authorization(
     )
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Serves the AMPM brand logo as favicon."""
+    logo_path = Path("static/images/ampm_logo.svg")
+    if logo_path.exists():
+        return FileResponse(str(logo_path), media_type="image/svg+xml")
+    return JSONResponse({"status": "no favicon"}, status_code=404)
+
+
 @app.get("/")
 def read_root():
     """Serves the main frontend Web UI application."""
