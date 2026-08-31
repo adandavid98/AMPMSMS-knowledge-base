@@ -14,11 +14,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const geminiKeyInput = document.getElementById('geminiKeyInput');
     const groqKeyInput = document.getElementById('groqKeyInput');
+    const openrouterKeyInput = document.getElementById('openrouterKeyInput');
     const tavilyKeyInput = document.getElementById('tavilyKeyInput');
     const saveKeysBtn = document.getElementById('saveKeysBtn');
     const keyStatusBadge = document.getElementById('keyStatusBadge');
     const toggleGeminiKey = document.getElementById('toggleGeminiKey');
     const toggleGroqKey = document.getElementById('toggleGroqKey');
+    const toggleOpenrouterKey = document.getElementById('toggleOpenrouterKey');
     const toggleTavilyKey = document.getElementById('toggleTavilyKey');
 
     const toggleApiKeyAccordion = document.getElementById('toggleApiKeyAccordion');
@@ -188,43 +190,62 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSavedApiKeys();
 
     // Toggle Password Visibility
-    toggleGeminiKey.addEventListener('click', () => {
-        geminiKeyInput.type = geminiKeyInput.type === 'password' ? 'text' : 'password';
-    });
-    toggleGroqKey.addEventListener('click', () => {
-        groqKeyInput.type = groqKeyInput.type === 'password' ? 'text' : 'password';
-    });
-    toggleTavilyKey.addEventListener('click', () => {
-        tavilyKeyInput.type = tavilyKeyInput.type === 'password' ? 'text' : 'password';
-    });
+    if (toggleGeminiKey) {
+        toggleGeminiKey.addEventListener('click', () => {
+            geminiKeyInput.type = geminiKeyInput.type === 'password' ? 'text' : 'password';
+        });
+    }
+    if (toggleGroqKey) {
+        toggleGroqKey.addEventListener('click', () => {
+            groqKeyInput.type = groqKeyInput.type === 'password' ? 'text' : 'password';
+        });
+    }
+    if (toggleOpenrouterKey) {
+        toggleOpenrouterKey.addEventListener('click', () => {
+            openrouterKeyInput.type = openrouterKeyInput.type === 'password' ? 'text' : 'password';
+        });
+    }
+    if (toggleTavilyKey) {
+        toggleTavilyKey.addEventListener('click', () => {
+            tavilyKeyInput.type = tavilyKeyInput.type === 'password' ? 'text' : 'password';
+        });
+    }
 
     // Save Keys Button
-    saveKeysBtn.addEventListener('click', () => {
-        const geminiVal = geminiKeyInput.value.trim();
-        const groqVal = groqKeyInput.value.trim();
-        const tavilyVal = tavilyKeyInput.value.trim();
+    if (saveKeysBtn) {
+        saveKeysBtn.addEventListener('click', () => {
+            const geminiVal = geminiKeyInput ? geminiKeyInput.value.trim() : '';
+            const groqVal = groqKeyInput ? groqKeyInput.value.trim() : '';
+            const openrouterVal = openrouterKeyInput ? openrouterKeyInput.value.trim() : '';
+            const tavilyVal = tavilyKeyInput ? tavilyKeyInput.value.trim() : '';
 
-        if (geminiVal) localStorage.setItem('gemini_api_key', geminiVal);
-        else localStorage.removeItem('gemini_api_key');
+            if (geminiVal) localStorage.setItem('gemini_api_key', geminiVal);
+            else localStorage.removeItem('gemini_api_key');
 
-        if (groqVal) localStorage.setItem('groq_api_key', groqVal);
-        else localStorage.removeItem('groq_api_key');
+            if (groqVal) localStorage.setItem('groq_api_key', groqVal);
+            else localStorage.removeItem('groq_api_key');
 
-        if (tavilyVal) localStorage.setItem('tavily_api_key', tavilyVal);
-        else localStorage.removeItem('tavily_api_key');
+            if (openrouterVal) localStorage.setItem('openrouter_api_key', openrouterVal);
+            else localStorage.removeItem('openrouter_api_key');
 
-        updateKeyBadgeStatus();
-        alert('Local API Keys saved securely in your browser!');
-    });
+            if (tavilyVal) localStorage.setItem('tavily_api_key', tavilyVal);
+            else localStorage.removeItem('tavily_api_key');
+
+            updateKeyBadgeStatus();
+            alert('Local API Keys saved securely in your browser!');
+        });
+    }
 
     function loadSavedApiKeys() {
         const savedGemini = localStorage.getItem('gemini_api_key');
         const savedGroq = localStorage.getItem('groq_api_key');
+        const savedOpenrouter = localStorage.getItem('openrouter_api_key');
         const savedTavily = localStorage.getItem('tavily_api_key');
 
-        if (savedGemini) geminiKeyInput.value = savedGemini;
-        if (savedGroq) groqKeyInput.value = savedGroq;
-        if (savedTavily) tavilyKeyInput.value = savedTavily;
+        if (savedGemini && geminiKeyInput) geminiKeyInput.value = savedGemini;
+        if (savedGroq && groqKeyInput) groqKeyInput.value = savedGroq;
+        if (savedOpenrouter && openrouterKeyInput) openrouterKeyInput.value = savedOpenrouter;
+        if (savedTavily && tavilyKeyInput) tavilyKeyInput.value = savedTavily;
 
         updateKeyBadgeStatus();
     }
@@ -232,9 +253,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateKeyBadgeStatus() {
         const hasGemini = !!localStorage.getItem('gemini_api_key');
         const hasGroq = !!localStorage.getItem('groq_api_key');
+        const hasOpenrouter = !!localStorage.getItem('openrouter_api_key');
         const hasTavily = !!localStorage.getItem('tavily_api_key');
 
-        if (hasGemini || hasGroq || hasTavily) {
+        if (hasGemini || hasGroq || hasOpenrouter || hasTavily) {
             keyStatusBadge.textContent = 'Custom Key Active ✓';
             keyStatusBadge.classList.add('active');
         } else {
@@ -537,10 +559,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const savedGemini = localStorage.getItem('gemini_api_key');
         const savedGroq = localStorage.getItem('groq_api_key');
+        const savedOpenrouter = localStorage.getItem('openrouter_api_key');
         const savedTavily = localStorage.getItem('tavily_api_key');
 
         if (savedGemini) headers['X-Gemini-Api-Key'] = savedGemini;
         if (savedGroq) headers['X-Groq-Api-Key'] = savedGroq;
+        if (savedOpenrouter) headers['X-Openrouter-Api-Key'] = savedOpenrouter;
         if (savedTavily) headers['X-Tavily-Api-Key'] = savedTavily;
 
         try {

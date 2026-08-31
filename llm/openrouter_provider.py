@@ -31,10 +31,11 @@ class OpenRouterLLMProvider(BaseLLMProvider):
         # Fallback list of active free open-source models on OpenRouter
         candidates = [
             self.model_name,
-            "google/gemma-4-31b-it:free",
-            "google/gemma-4-26b-a4b-it:free",
-            "liquid/lfm-2.5-2.6b:free",
-            "openai/gpt-oss-20b:free"
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "meta-llama/llama-3.1-8b-instruct:free",
+            "google/gemma-2-9b-it:free",
+            "mistralai/mistral-7b-instruct:free",
+            "qwen/qwen-2.5-72b-instruct:free"
         ]
         
         # Deduplicate while preserving order

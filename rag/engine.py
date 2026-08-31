@@ -75,24 +75,51 @@ class RAGEngine:
             print(f"[Warning] Vision extraction failed: {e}")
         return None
 
-    def _rewrite_query_llm(self, query: str, provider_name: str, api_key: str = None) -> str:
-        """Cleans and expands user queries to improve retrieval recall."""
-        clean_q = re.sub(r'(?i)(find\s+in\s+the\s+documents\s+only|documents\s+only|internal\s+docs\s+only|you\s+can\s+also\s+search\s+on\s+the\s+web|search\s+web)', '', query).strip()
-        
+    def _clean_query_text(self, query: str) -> str:
+        """Removes conversational fluff and extracts clean search intent."""
+        clean = re.sub(
+            r'(?i)(find\s+in\s+the\s+documents\s+only|documents\s+only|internal\s+docs\s+only|you\s+can\s+also\s+search\s+on\s+the\s+web|search\s+web|search\s+online|please\s+tell\s+me|can\s+you\s+tell\s+me|how\s+do\s+i|how\s+can\s+i|what\s+is\s+the|is\s+there\s+a|where\s+is|are\s+there)',
+            ' ',
+            query
+        )
+        clean = re.sub(r'[\?\"\']', ' ', clean)
+        clean = re.sub(r'\s+', ' ', clean).strip()
+        return clean
+
+    def _sanitize_llm_rewrite(self, text: str) -> str:
+        """Strips chat preambles from LLM outputs like 'Here is the rewritten query:...'"""
+        if not text:
+            return ""
+        text = re.sub(r'(?i)^(here\s+(is|are)\s+the\s+(rewritten\s+)?(query|keywords|search\s+terms?)[:\s\-]*|rewritten\s+query[:\s\-]*|search\s+query[:\s\-]*|keywords?[:\s\-]*)', '', text.strip())
+        text = text.replace('"', '').replace('`', '').strip()
+        return text
+
+    def _rewrite_query_llm(self, query: str, provider_name: str = None, api_key: str = None) -> str:
+        """Cleans and expands user queries to improve retrieval recall reliably."""
+        clean_q = self._clean_query_text(query)
+        if not clean_q:
+            return query.strip()
+
+        # Decouple rewrite from chosen LLM: prefer Gemini if available to ensure robust search for all providers
+        rewrite_provider = "gemini" if (config.GEMINI_API_KEY or (provider_name == "gemini" and api_key)) else provider_name
+        rewrite_key = api_key if rewrite_provider == provider_name else config.GEMINI_API_KEY
+
         try:
-            provider = get_llm_provider(provider_name)
+            provider = get_llm_provider(rewrite_provider)
             user_prompt = f"Original Query: {clean_q}\n\nRewrite this to extract only the most important technical keywords and file names for a database search."
             rewritten = provider.generate_answer(
                 system_prompt=QUERY_REWRITE_SYSTEM_PROMPT, 
                 user_prompt=user_prompt, 
-                api_key=api_key
+                api_key=rewrite_key
             )
-            if rewritten and not rewritten.isspace():
-                return rewritten.strip()
+            cleaned_rewritten = self._sanitize_llm_rewrite(rewritten)
+            if cleaned_rewritten and not cleaned_rewritten.isspace() and len(cleaned_rewritten.split()) <= 20:
+                # Combine original clean query with rewritten keywords to maximize recall
+                return f"{clean_q} {cleaned_rewritten}"
         except Exception as e:
             print(f"[Warning] LLM query rewrite failed: {e}. Using regex fallback.")
 
-        return clean_q or query.strip()
+        return clean_q
 
     def _format_history(self, history: list) -> str:
         if not history:
@@ -165,8 +192,11 @@ class RAGEngine:
         else:
             matches = self.vector_store.search(query=search_query, top_k=top_k, category_filter=category)
 
-        # Also search for key exact entity terms
-        key_entities = re.findall(r'(?i)\b(RBSLynk|Mx915|M400|Buypass|Fiserv|partial|tender|WIC|PayServer)\b', full_question)
+        # Also search directly for key exact POS, hardware, and file/folder entity terms
+        key_entities = re.findall(
+            r'(?i)\b(RBSLynk|Mx915|M400|Buypass|Fiserv|partial|tender|WIC|PayServer|rtm|sqr|xf|reportbuilder|storeman|eod|bod|pinpad|invoicing|pricebook|fct_tab|alt_tab|rec_bat|loc|ssf)\b',
+            full_question
+        )
         if key_entities:
             sub_matches = self.vector_store.search(query=" ".join(set(key_entities)), top_k=6, category_filter=category)
             seen_ids = set(m["id"] for m in matches)

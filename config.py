@@ -41,7 +41,7 @@ GEMINI_MODEL = "gemini-3.6-flash"  # Primary active Flash model
 GEMINI_EMBEDDING_MODEL = "models/gemini-embedding-001"
 
 GROQ_MODEL = "llama-3.3-70b-versatile"
-OPENROUTER_MODEL = "google/gemma-4-31b-it:free"
+OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 OLLAMA_MODEL = "llama3"
 
 # Chunking & Storage

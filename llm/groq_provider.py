@@ -26,23 +26,40 @@ class GroqLLMProvider(BaseLLMProvider):
 
         from groq import Groq
 
+        # Fallback list of active Groq models in case one is unavailable or deprecated
+        candidates = [
+            self.model_name,
+            "llama-3.3-70b-versatile",
+            "llama-3.1-70b-versatile",
+            "llama-3.1-8b-instant",
+            "llama3-70b-8192",
+            "llama3-8b-8192",
+            "gemma2-9b-it",
+            "mixtral-8x7b-32768"
+        ]
+        unique_candidates = []
+        for c in candidates:
+            if c and c not in unique_candidates:
+                unique_candidates.append(c)
+
         for active_key in keys:
-            try:
-                client = Groq(api_key=active_key)
-                completion = client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.2,
-                    max_tokens=1024
-                )
-                if completion and completion.choices:
-                    return completion.choices[0].message.content
-            except Exception as e:
-                last_error = str(e)
-                print(f"[Groq Warning] Key ...{active_key[-6:]} failed: {e}")
-                continue
+            for model_candidate in unique_candidates:
+                try:
+                    client = Groq(api_key=active_key)
+                    completion = client.chat.completions.create(
+                        model=model_candidate,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        temperature=0.2,
+                        max_tokens=1024
+                    )
+                    if completion and completion.choices:
+                        return completion.choices[0].message.content
+                except Exception as e:
+                    last_error = str(e)
+                    print(f"[Groq Warning] Model {model_candidate} with Key ...{active_key[-6:]} failed: {e}")
+                    continue
 
         return f"[Groq Error: {last_error or 'Could not generate response with available Groq keys.'}]"
