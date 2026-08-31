@@ -26,15 +26,13 @@ class GroqLLMProvider(BaseLLMProvider):
 
         from groq import Groq
 
-        # Fallback list of active Groq models in case one is unavailable or deprecated
+        # Fallback list strictly using requested active Groq models
         candidates = [
             self.model_name,
-            "llama-3.1-8b-instant",
             "llama-3.3-70b-versatile",
-            "gemma2-9b-it",
-            "qwen3.8-27b",
-            "llama3-70b-8192",
-            "llama3-8b-8192"
+            "llama-3.1-8b-instant",
+            "qwen/qwen3-32b",
+            "qwen3-32b"
         ]
         unique_candidates = []
         for c in candidates:
