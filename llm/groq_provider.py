@@ -26,18 +26,22 @@ class GroqLLMProvider(BaseLLMProvider):
 
         from groq import Groq
 
-        # Fallback list strictly using requested active Groq models
+        # Active operational Groq models
         candidates = [
             self.model_name,
             "llama-3.3-70b-versatile",
             "llama-3.1-8b-instant",
-            "qwen/qwen3-32b",
-            "qwen3-32b"
+            "qwen-2.5-32b",
+            "gemma2-9b-it"
         ]
         unique_candidates = []
         for c in candidates:
             if c and c not in unique_candidates:
                 unique_candidates.append(c)
+
+        rate_limited = False
+        auth_failed = False
+        detailed_errors = []
 
         for active_key in keys:
             for model_candidate in unique_candidates:
@@ -55,8 +59,19 @@ class GroqLLMProvider(BaseLLMProvider):
                     if completion and completion.choices:
                         return completion.choices[0].message.content
                 except Exception as e:
-                    last_error = str(e)
+                    err_str = str(e)
+                    detailed_errors.append(f"{model_candidate}: {err_str}")
+                    if "401" in err_str or "invalid_api_key" in err_str.lower() or "unauthorized" in err_str.lower():
+                        auth_failed = True
+                    elif "429" in err_str or "rate_limit" in err_str.lower():
+                        rate_limited = True
                     print(f"[Groq Warning] Model {model_candidate} with Key ...{active_key[-6:]} failed: {e}")
                     continue
 
-        return f"[Groq Error: {last_error or 'Could not generate response with available Groq keys.'}]"
+        if auth_failed:
+            return "[Groq Error: Invalid or expired GROQ_API_KEY. Please verify your Groq key in the settings panel.]"
+        if rate_limited:
+            return "[Groq Error: Free tier rate limit (TPM/RPM) exceeded on Groq. Please wait 1 minute before retrying or use Google Gemini / OpenRouter.]"
+
+        primary_error = detailed_errors[0] if detailed_errors else "Could not generate response with available Groq keys."
+        return f"[Groq Error: {primary_error}]"
