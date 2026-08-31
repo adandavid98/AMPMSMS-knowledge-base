@@ -40,8 +40,8 @@ DEFAULT_LLM_PROVIDER = os.getenv("DEFAULT_LLM_PROVIDER", "gemini").lower()
 GEMINI_MODEL = "gemini-3.6-flash"  # Primary active Flash model
 GEMINI_EMBEDDING_MODEL = "models/gemini-embedding-001"
 
-GROQ_MODEL = "llama-3.3-70b-versatile"
-OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+GROQ_MODEL = "llama-3.1-8b-instant"
+OPENROUTER_MODEL = "dots-studio/dots-3-note-preview:free"
 OLLAMA_MODEL = "llama3"
 
 # Chunking & Storage
