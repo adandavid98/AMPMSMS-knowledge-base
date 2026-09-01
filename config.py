@@ -12,6 +12,7 @@ BASE_DIR = Path(__file__).parent.resolve()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
@@ -40,6 +41,7 @@ DEFAULT_LLM_PROVIDER = os.getenv("DEFAULT_LLM_PROVIDER", "gemini").lower()
 GEMINI_MODEL = "gemini-3.6-flash"  # Primary active Flash model
 GEMINI_EMBEDDING_MODEL = "models/gemini-embedding-001"
 
+CEREBRAS_MODEL = "llama-3.3-70b"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 OPENROUTER_MODEL = "dots-studio/dots-3-note-preview:free"
 OLLAMA_MODEL = "llama3"

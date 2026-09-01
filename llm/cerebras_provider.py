@@ -28,10 +28,24 @@ class CerebrasLLMProvider(BaseLLMProvider):
 
         url = "https://api.cerebras.ai/v1/chat/completions"
 
-        candidates = ["llama-3.3-70b", "llama3.1-8b", "llama-3.1-70b", "gpt-oss-120b", "gemma-4-31b", "zai-glm-4.7", self.model_name]
-        
+        # Active verified Cerebras models
+        candidates = [
+            self.model_name,
+            "llama-3.3-70b",
+            "llama3.3-70b",
+            "llama-3.1-8b",
+            "llama3.1-8b",
+            "llama-3.1-70b",
+            "deepseek-r1-distill-llama-70b",
+            "qwen-2.5-72b"
+        ]
+        unique_candidates = []
+        for c in candidates:
+            if c and c not in unique_candidates:
+                unique_candidates.append(c)
+
         for active_key in keys:
-            for model_candidate in candidates:
+            for model_candidate in unique_candidates:
                 try:
                     payload = {
                         "model": model_candidate,
@@ -49,7 +63,7 @@ class CerebrasLLMProvider(BaseLLMProvider):
                         headers={
                             "Content-Type": "application/json",
                             "Authorization": f"Bearer {active_key}",
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                            "User-Agent": "AMPM-POS-Assistant/1.0"
                         },
                         method="POST"
                     )
@@ -57,16 +71,22 @@ class CerebrasLLMProvider(BaseLLMProvider):
                     with urllib.request.urlopen(req, timeout=30) as resp:
                         resp_data = json.loads(resp.read().decode("utf-8"))
                         if "choices" in resp_data and len(resp_data["choices"]) > 0:
-                            return resp_data["choices"][0]["message"]["content"]
+                            content = resp_data["choices"][0]["message"].get("content", "")
+                            if content:
+                                return content.strip()
                 except Exception as e:
                     last_error = str(e)
                     print(f"[Cerebras Warning] Model {model_candidate} with Key ...{active_key[-6:]} failed: {e}")
+                    if "401" in last_error or "unauthorized" in last_error.lower():
+                        return "[Cerebras Error: Invalid or expired CEREBRAS_API_KEY. Please verify your Cerebras API key in the settings panel.]"
                     if "402" in last_error:
                         return (
                             "⚠️ **Cerebras API Verification Required (HTTP 402)**\n\n"
-                            "Cerebras authenticated your API key successfully, but returned a payment/verification check.\n\n"
-                            "**Fix**: Log into [cloud.cerebras.ai](https://cloud.cerebras.ai/), go to **Limits** or **Billing**, and activate free tier usage."
+                            "Cerebras authenticated your API key successfully, but returned a verification check.\n\n"
+                            "**Fix**: Log into [cloud.cerebras.ai](https://cloud.cerebras.ai/), go to **Settings > Billing/Limits**, and confirm free tier usage."
                         )
+                    if "429" in last_error:
+                        return "[Cerebras Error: Free tier rate limit (RPM/TPM) reached on Cerebras. Please wait 1 minute or switch to Gemini.]"
                     continue
 
         return f"[Cerebras Error: {last_error or 'Could not generate response with available Cerebras models.'}]"
