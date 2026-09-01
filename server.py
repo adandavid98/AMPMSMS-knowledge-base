@@ -280,6 +280,7 @@ async def chat(
     request: ChatRequest,
     auth_data: dict = Depends(check_access_authorization),
     x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-Api-Key"),
+    x_cohere_api_key: Optional[str] = Header(None, alias="X-Cohere-Api-Key"),
     x_groq_api_key: Optional[str] = Header(None, alias="X-Groq-Api-Key"),
     x_openrouter_api_key: Optional[str] = Header(None, alias="X-Openrouter-Api-Key"),
     x_tavily_api_key: Optional[str] = Header(None, alias="X-Tavily-Api-Key")
@@ -294,6 +295,8 @@ async def chat(
 
     if provider == "gemini" and x_gemini_api_key:
         custom_api_key = x_gemini_api_key
+    elif provider == "cohere" and x_cohere_api_key:
+        custom_api_key = x_cohere_api_key
     elif provider == "groq" and x_groq_api_key:
         custom_api_key = x_groq_api_key
     elif provider == "openrouter" and x_openrouter_api_key:
