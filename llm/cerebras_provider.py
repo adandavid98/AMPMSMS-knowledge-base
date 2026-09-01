@@ -1,3 +1,4 @@
+import os
 import json
 import urllib.request
 import config
@@ -6,8 +7,8 @@ from .base import BaseLLMProvider
 class CerebrasLLMProvider(BaseLLMProvider):
     """Cerebras Cloud API Provider adapter (Ultra-fast Llama 3.3 70B)."""
 
-    def __init__(self, api_key: str = None, model_name: str = getattr(config, "CEREBRAS_MODEL", "llama3.3-70b")):
-        self.api_key = api_key or getattr(config, "CEREBRAS_API_KEY", "")
+    def __init__(self, api_key: str = None, model_name: str = getattr(config, "CEREBRAS_MODEL", "gpt-oss-120b")):
+        self.api_key = api_key or getattr(config, "CEREBRAS_API_KEY", "") or os.getenv("CerebrasAMPM_API_KEY", "") or os.getenv("CEREBRAS_API_KEY", "")
         self.model_name = model_name
 
         if not self.api_key:
