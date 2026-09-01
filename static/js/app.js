@@ -13,14 +13,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const statDocs = document.getElementById('statDocs');
 
     const geminiKeyInput = document.getElementById('geminiKeyInput');
-    const cerebrasKeyInput = document.getElementById('cerebrasKeyInput');
     const groqKeyInput = document.getElementById('groqKeyInput');
     const openrouterKeyInput = document.getElementById('openrouterKeyInput');
     const tavilyKeyInput = document.getElementById('tavilyKeyInput');
     const saveKeysBtn = document.getElementById('saveKeysBtn');
     const keyStatusBadge = document.getElementById('keyStatusBadge');
     const toggleGeminiKey = document.getElementById('toggleGeminiKey');
-    const toggleCerebrasKey = document.getElementById('toggleCerebrasKey');
     const toggleGroqKey = document.getElementById('toggleGroqKey');
     const toggleOpenrouterKey = document.getElementById('toggleOpenrouterKey');
     const toggleTavilyKey = document.getElementById('toggleTavilyKey');
@@ -197,11 +195,6 @@ document.addEventListener('DOMContentLoaded', () => {
             geminiKeyInput.type = geminiKeyInput.type === 'password' ? 'text' : 'password';
         });
     }
-    if (toggleCerebrasKey) {
-        toggleCerebrasKey.addEventListener('click', () => {
-            cerebrasKeyInput.type = cerebrasKeyInput.type === 'password' ? 'text' : 'password';
-        });
-    }
     if (toggleGroqKey) {
         toggleGroqKey.addEventListener('click', () => {
             groqKeyInput.type = groqKeyInput.type === 'password' ? 'text' : 'password';
@@ -222,16 +215,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (saveKeysBtn) {
         saveKeysBtn.addEventListener('click', () => {
             const geminiVal = geminiKeyInput ? geminiKeyInput.value.trim() : '';
-            const cerebrasVal = cerebrasKeyInput ? cerebrasKeyInput.value.trim() : '';
             const groqVal = groqKeyInput ? groqKeyInput.value.trim() : '';
             const openrouterVal = openrouterKeyInput ? openrouterKeyInput.value.trim() : '';
             const tavilyVal = tavilyKeyInput ? tavilyKeyInput.value.trim() : '';
 
             if (geminiVal) localStorage.setItem('gemini_api_key', geminiVal);
             else localStorage.removeItem('gemini_api_key');
-
-            if (cerebrasVal) localStorage.setItem('cerebras_api_key', cerebrasVal);
-            else localStorage.removeItem('cerebras_api_key');
 
             if (groqVal) localStorage.setItem('groq_api_key', groqVal);
             else localStorage.removeItem('groq_api_key');
@@ -249,13 +238,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function loadSavedApiKeys() {
         const savedGemini = localStorage.getItem('gemini_api_key');
-        const savedCerebras = localStorage.getItem('cerebras_api_key');
         const savedGroq = localStorage.getItem('groq_api_key');
         const savedOpenrouter = localStorage.getItem('openrouter_api_key');
         const savedTavily = localStorage.getItem('tavily_api_key');
 
         if (savedGemini && geminiKeyInput) geminiKeyInput.value = savedGemini;
-        if (savedCerebras && cerebrasKeyInput) cerebrasKeyInput.value = savedCerebras;
         if (savedGroq && groqKeyInput) groqKeyInput.value = savedGroq;
         if (savedOpenrouter && openrouterKeyInput) openrouterKeyInput.value = savedOpenrouter;
         if (savedTavily && tavilyKeyInput) tavilyKeyInput.value = savedTavily;
@@ -265,12 +252,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateKeyBadgeStatus() {
         const hasGemini = !!localStorage.getItem('gemini_api_key');
-        const hasCerebras = !!localStorage.getItem('cerebras_api_key');
         const hasGroq = !!localStorage.getItem('groq_api_key');
         const hasOpenrouter = !!localStorage.getItem('openrouter_api_key');
         const hasTavily = !!localStorage.getItem('tavily_api_key');
 
-        if (hasGemini || hasCerebras || hasGroq || hasOpenrouter || hasTavily) {
+        if (hasGemini || hasGroq || hasOpenrouter || hasTavily) {
             keyStatusBadge.textContent = 'Custom Key Active ✓';
             keyStatusBadge.classList.add('active');
         } else {
@@ -572,13 +558,11 @@ document.addEventListener('DOMContentLoaded', () => {
         headers = getAuthHeaders(headers);
 
         const savedGemini = localStorage.getItem('gemini_api_key');
-        const savedCerebras = localStorage.getItem('cerebras_api_key');
         const savedGroq = localStorage.getItem('groq_api_key');
         const savedOpenrouter = localStorage.getItem('openrouter_api_key');
         const savedTavily = localStorage.getItem('tavily_api_key');
 
         if (savedGemini) headers['X-Gemini-Api-Key'] = savedGemini;
-        if (savedCerebras) headers['X-Cerebras-Api-Key'] = savedCerebras;
         if (savedGroq) headers['X-Groq-Api-Key'] = savedGroq;
         if (savedOpenrouter) headers['X-Openrouter-Api-Key'] = savedOpenrouter;
         if (savedTavily) headers['X-Tavily-Api-Key'] = savedTavily;
