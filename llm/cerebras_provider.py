@@ -31,13 +31,11 @@ class CerebrasLLMProvider(BaseLLMProvider):
         # Active verified Cerebras models
         candidates = [
             self.model_name,
+            "gpt-oss-120b",
+            "gemma-4-31b",
             "llama-3.3-70b",
             "llama3.3-70b",
-            "llama-3.1-8b",
-            "llama3.1-8b",
-            "llama-3.1-70b",
-            "deepseek-r1-distill-llama-70b",
-            "qwen-2.5-72b"
+            "llama-3.1-8b"
         ]
         unique_candidates = []
         for c in candidates:
@@ -74,19 +72,26 @@ class CerebrasLLMProvider(BaseLLMProvider):
                             content = resp_data["choices"][0]["message"].get("content", "")
                             if content:
                                 return content.strip()
+                except urllib.error.HTTPError as he:
+                    error_body = he.read().decode("utf-8", errors="ignore")
+                    if he.code == 402 or "payment_required" in error_body:
+                        return (
+                            "⚠️ **Cerebras API - Activación de Plan Requerida (HTTP 402)**\n\n"
+                            "Tu API Key de Cerebras es válida, pero tu cuenta requiere activar el nivel de facturación/límites en la consola de Cerebras.\n\n"
+                            "**Solución**:\n"
+                            "1. Inicia sesión en **[cloud.cerebras.ai](https://cloud.cerebras.ai/)**.\n"
+                            "2. Ve a la pestaña **Billing / Limits** y activa el acceso a la API."
+                        )
+                    if he.code == 401 or "unauthorized" in error_body:
+                        return "[Cerebras Error: Invalid or expired CEREBRAS_API_KEY. Please verify your Cerebras API key in the settings panel.]"
+                    if he.code == 429:
+                        return "[Cerebras Error: Rate limit reached on Cerebras. Please wait 1 minute or switch to Google Gemini.]"
+                    last_error = f"HTTP {he.code}: {error_body}"
+                    print(f"[Cerebras Warning] Model {model_candidate} failed with HTTP {he.code}: {error_body}")
+                    continue
                 except Exception as e:
                     last_error = str(e)
                     print(f"[Cerebras Warning] Model {model_candidate} with Key ...{active_key[-6:]} failed: {e}")
-                    if "401" in last_error or "unauthorized" in last_error.lower():
-                        return "[Cerebras Error: Invalid or expired CEREBRAS_API_KEY. Please verify your Cerebras API key in the settings panel.]"
-                    if "402" in last_error:
-                        return (
-                            "⚠️ **Cerebras API Verification Required (HTTP 402)**\n\n"
-                            "Cerebras authenticated your API key successfully, but returned a verification check.\n\n"
-                            "**Fix**: Log into [cloud.cerebras.ai](https://cloud.cerebras.ai/), go to **Settings > Billing/Limits**, and confirm free tier usage."
-                        )
-                    if "429" in last_error:
-                        return "[Cerebras Error: Free tier rate limit (RPM/TPM) reached on Cerebras. Please wait 1 minute or switch to Gemini.]"
                     continue
 
         return f"[Cerebras Error: {last_error or 'Could not generate response with available Cerebras models.'}]"
