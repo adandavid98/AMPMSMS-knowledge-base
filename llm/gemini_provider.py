@@ -74,7 +74,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                             model_name=clean_name,
                             system_instruction=system_prompt
                         )
-                        response = model.generate_content(contents)
+                        response = model.generate_content(contents, request_options={"timeout": 6.0})
                         if response and hasattr(response, "text") and response.text:
                             return response.text
                     except Exception as model_err:

@@ -55,10 +55,14 @@ class VLMExtractor:
             for model_name in ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest"]:
                 try:
                     model = genai.GenerativeModel(model_name=model_name)
-                    response = model.generate_content([prompt, pil_img])
+                    response = model.generate_content([prompt, pil_img], request_options={"timeout": 4.0})
                     if response and response.text:
                         return response.text.strip()
-                except Exception:
+                except Exception as model_err:
+                    err_str = str(model_err)
+                    if "429" in err_str or "quota" in err_str.lower() or "503" in err_str or "unavailable" in err_str.lower():
+                        print(f"[VLM Extractor Warning] Gemini API unavailable or quota exceeded: {err_str}")
+                        break
                     continue
 
         except Exception as e:
