@@ -9,8 +9,8 @@ import hashlib
 import requests
 from typing import List
 
-# HuggingFace free Inference API endpoint (same model used for ingestion)
-HF_API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+# HuggingFace modern router endpoint
+HF_API_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2"
 HF_HEADERS = {}
 if os.environ.get("HF_API_TOKEN"):
     HF_HEADERS["Authorization"] = f"Bearer {os.environ['HF_API_TOKEN']}"
@@ -31,9 +31,14 @@ def _hash_embed(texts: List[str]) -> List[List[float]]:
 
 def _hf_embed(texts: List[str]) -> List[List[float]]:
     """Call HuggingFace Inference API for all-MiniLM-L6-v2 embeddings."""
+    token = os.environ.get("HF_API_TOKEN")
+    if not token:
+        # Fast local fallback to avoid blocking remote calls without auth
+        return _hash_embed(texts)
+
     try:
         payload = {"inputs": texts, "options": {"wait_for_model": True}}
-        resp = requests.post(HF_API_URL, headers=HF_HEADERS, json=payload, timeout=30)
+        resp = requests.post(HF_API_URL, headers={"Authorization": f"Bearer {token}"}, json=payload, timeout=3)
         if resp.status_code == 200:
             data = resp.json()
             # API returns List[List[float]] for batch inputs

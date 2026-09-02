@@ -621,8 +621,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     conversationHistory = conversationHistory.slice(conversationHistory.length - 12);
                 }
             } else {
-                const err = await response.json();
-                appendMessage('assistant', `⚠️ **Error**: ${err.detail || 'Failed to process request.'}`);
+                let errDetail = '';
+                try {
+                    const err = await response.json();
+                    errDetail = err.detail || err.message || JSON.stringify(err);
+                } catch (jsonErr) {
+                    try {
+                        const rawText = await response.text();
+                        // Strip raw HTML tags if Vercel returned an error page
+                        errDetail = rawText.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+                    } catch (txtErr) {
+                        errDetail = response.statusText || 'Server error';
+                    }
+                }
+                appendMessage('assistant', `⚠️ **Error (${response.status})**: ${errDetail || 'Failed to process request.'}`);
             }
         } catch (error) {
             if (error.name === 'AbortError') {
