@@ -100,6 +100,11 @@ class RAGEngine:
         if not clean_q:
             return query.strip()
 
+        # If query already contains specific technical POS entities or error codes, skip LLM rewrite to eliminate latency
+        has_pos_entity = bool(re.search(r'(?i)\b(RBSLynk|Mx915|M400|Buypass|Fiserv|partial|tender|WIC|PayServer|rtm|sqr|xf|reportbuilder|storeman|eod|bod|pinpad|invoicing|pricebook|fct_tab|alt_tab|rec_bat|loc|ssf|error\s*\d+|code\s*\d+)\b', clean_q))
+        if has_pos_entity:
+            return clean_q
+
         # Decouple rewrite from chosen LLM: prefer Gemini if available to ensure robust search for all providers
         rewrite_provider = "gemini" if (config.GEMINI_API_KEY or (provider_name == "gemini" and api_key)) else provider_name
         rewrite_key = api_key if rewrite_provider == provider_name else config.GEMINI_API_KEY
@@ -185,26 +190,20 @@ class RAGEngine:
         else:
             search_query = self._rewrite_query_llm(full_question, provider_name, api_key)
 
-        # Retrieval Span
-        retrieval_span = trace.span(name="retrieval_hybrid")
-        if config.USE_HYBRID_SEARCH:
-            matches = self.hybrid_retriever.search(query=search_query, top_k=top_k, category=category)
-        else:
-            matches = self.vector_store.search(query=search_query, top_k=top_k, category_filter=category)
-
-        # Also search directly for key exact POS, hardware, and file/folder entity terms
+        # Ensure key exact POS, hardware, and file/folder entity terms are part of the primary search query
         key_entities = re.findall(
             r'(?i)\b(RBSLynk|Mx915|M400|Buypass|Fiserv|partial|tender|WIC|PayServer|rtm|sqr|xf|reportbuilder|storeman|eod|bod|pinpad|invoicing|pricebook|fct_tab|alt_tab|rec_bat|loc|ssf)\b',
             full_question
         )
         if key_entities:
-            sub_matches = self.vector_store.search(query=" ".join(set(key_entities)), top_k=6, category_filter=category)
-            seen_ids = set(m["id"] for m in matches)
-            for sm in sub_matches:
-                if sm["id"] not in seen_ids:
-                    matches.append(sm)
-                    seen_ids.add(sm["id"])
+            search_query = f"{search_query} {' '.join(set(key_entities))}"
 
+        # Retrieval Span (Single unified fast search pass)
+        retrieval_span = trace.span(name="retrieval_hybrid")
+        if config.USE_HYBRID_SEARCH:
+            matches = self.hybrid_retriever.search(query=search_query, top_k=top_k, category=category)
+        else:
+            matches = self.vector_store.search(query=search_query, top_k=top_k, category_filter=category)
         retrieval_span.end()
 
         # Score threshold filtering
