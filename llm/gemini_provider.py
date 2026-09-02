@@ -81,9 +81,11 @@ class GeminiLLMProvider(BaseLLMProvider):
                         err_str = str(model_err)
                         print(f"[Gemini Warning] Model {clean_name} with key ...{active_key[-6:]} failed: {err_str}")
                         last_error = err_str
-                        # If quota exceeded, break model loop to try the NEXT API key in keys
+                        # If quota exceeded or 503 unavailable, break model loop
                         if "429" in err_str or "quota" in err_str.lower():
                             break
+                        if "503" in err_str or "unavailable" in err_str.lower():
+                            return "⚠️ **Gemini API Overloaded (HTTP 503)**\n\nGoogle's servers are currently experiencing high demand. Please try again in a few moments or switch to a different provider (like Cohere or OpenRouter)."
                         continue
             except Exception as key_err:
                 last_error = str(key_err)
@@ -94,7 +96,7 @@ class GeminiLLMProvider(BaseLLMProvider):
             return (
                 "⚠️ **Gemini API Quota Limit Reached (HTTP 429)**\n\n"
                 "All configured Gemini API keys have temporarily reached Google's quota limit for today.\n\n"
-                "**Solution**: Switch to **Groq API** in the left sidebar under *LLM Provider* for instant responses."
+                "**Solution**: Switch to **Cohere** or **OpenRouter** in the left sidebar."
             )
 
         return f"[Gemini API Error: {last_error or 'Could not generate response with available Gemini models.'}]"

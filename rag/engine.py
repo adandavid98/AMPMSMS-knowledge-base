@@ -105,9 +105,9 @@ class RAGEngine:
         if has_pos_entity:
             return clean_q
 
-        # Decouple rewrite from chosen LLM: prefer Gemini if available to ensure robust search for all providers
-        rewrite_provider = "gemini" if (config.GEMINI_API_KEY or (provider_name == "gemini" and api_key)) else provider_name
-        rewrite_key = api_key if rewrite_provider == provider_name else config.GEMINI_API_KEY
+        # Use the requested provider for rewrite to avoid cross-provider latency/outages
+        rewrite_provider = provider_name
+        rewrite_key = api_key
 
         try:
             provider = get_llm_provider(rewrite_provider)
