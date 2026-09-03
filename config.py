@@ -38,7 +38,7 @@ APP_PASSPHRASE = os.getenv("APP_PASSPHRASE", "AMPM$$16520")
 
 # Defaults
 DEFAULT_LLM_PROVIDER = os.getenv("DEFAULT_LLM_PROVIDER", "gemini").lower()
-GEMINI_MODEL = "gemini-3.6-flash"  # Primary active Flash model
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")  # Primary active Flash model
 GEMINI_EMBEDDING_MODEL = "models/gemini-embedding-001"
 
 COHERE_MODEL = "command-r-08-2024"

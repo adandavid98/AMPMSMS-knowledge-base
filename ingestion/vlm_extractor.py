@@ -52,17 +52,15 @@ class VLMExtractor:
                 "Provide a clear, detailed, technical transcription and summary so a field technician can search for and understand this visual content."
             )
 
-            for model_name in ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest"]:
+            for model_name in ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.6-flash", "gemini-3.7-flash"]:
                 try:
                     model = genai.GenerativeModel(model_name=model_name)
-                    response = model.generate_content([prompt, pil_img], request_options={"timeout": 4.0})
+                    response = model.generate_content([prompt, pil_img], request_options={"timeout": 20.0})
                     if response and response.text:
                         return response.text.strip()
                 except Exception as model_err:
                     err_str = str(model_err)
-                    if "429" in err_str or "quota" in err_str.lower() or "503" in err_str or "unavailable" in err_str.lower():
-                        print(f"[VLM Extractor Warning] Gemini API unavailable or quota exceeded: {err_str}")
-                        break
+                    print(f"[VLM Extractor Warning] Gemini model {model_name} failed: {err_str}")
                     continue
 
         except Exception as e:

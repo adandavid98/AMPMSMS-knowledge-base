@@ -60,8 +60,8 @@ class GeminiLLMProvider(BaseLLMProvider):
                         except Exception as img_err:
                             print(f"[Warning] Failed to decode image attachment: {img_err}")
 
-                # List of active Gemini model candidates
-                raw_candidates = [self.model_name, "gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-pro-preview"]
+                # List of active Gemini model candidates (prioritize highly available Flash tiers, avoid Pro preview limit:0)
+                raw_candidates = [self.model_name, "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.6-flash", "gemini-3.7-flash"]
                 candidates = []
                 for c in raw_candidates:
                     if c and c not in candidates:
@@ -74,29 +74,28 @@ class GeminiLLMProvider(BaseLLMProvider):
                             model_name=clean_name,
                             system_instruction=system_prompt
                         )
-                        response = model.generate_content(contents, request_options={"timeout": 6.0})
+                        response = model.generate_content(contents, request_options={"timeout": 20.0})
                         if response and hasattr(response, "text") and response.text:
                             return response.text
                     except Exception as model_err:
                         err_str = str(model_err)
                         print(f"[Gemini Warning] Model {clean_name} with key ...{active_key[-6:]} failed: {err_str}")
                         last_error = err_str
-                        # If quota exceeded or 503 unavailable, break model loop
-                        if "429" in err_str or "quota" in err_str.lower():
-                            break
-                        if "503" in err_str or "unavailable" in err_str.lower():
-                            return "⚠️ **Gemini API Overloaded (HTTP 503)**\n\nGoogle's servers are currently experiencing high demand. Please try again in a few moments or switch to a different provider (like Cohere or OpenRouter)."
+                        # Try next model candidate if overloaded (503) or rate-limited on specific model
                         continue
             except Exception as key_err:
                 last_error = str(key_err)
                 print(f"[Gemini Key Error] Key ...{active_key[-6:]} failed: {key_err}")
                 continue
 
+        if "503" in str(last_error) or "unavailable" in str(last_error).lower():
+            return "⚠️ **Gemini API Overloaded (HTTP 503)**\n\nGoogle's servers are currently experiencing high demand. Please try again in a few moments or switch to a different provider (like Cohere or OpenRouter)."
+
         if "429" in str(last_error) or "quota" in str(last_error).lower():
             return (
-                "⚠️ **Gemini API Quota Limit Reached (HTTP 429)**\n\n"
-                "All configured Gemini API keys have temporarily reached Google's quota limit for today.\n\n"
-                "**Solution**: Switch to **Cohere** or **OpenRouter** in the left sidebar."
+                "⚠️ **Gemini API Rate Limit / Quota Exceeded (HTTP 429)**\n\n"
+                "Google Gemini has temporarily rate-limited requests on this key (often due to per-minute limits or high demand).\n\n"
+                "**Solution**: Please wait 30–60 seconds, or switch to **Cohere** or **OpenRouter** in the left sidebar."
             )
 
         return f"[Gemini API Error: {last_error or 'Could not generate response with available Gemini models.'}]"
