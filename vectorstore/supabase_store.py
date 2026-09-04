@@ -103,47 +103,59 @@ class SupabaseVectorStore:
         except Exception as e:
             print(f"[Warning] Vector search error: {e}")
 
-        # 3. Optimized Keyword & Topic Title Search (Fast single-pass queries)
+        # 3. Optimized Keyword, File Name & Topic Title Search
         raw_words = re.findall(r'[A-Za-z0-9_\-\.]{3,}', query)
-        stop_words = {"find", "documents", "only", "how", "can", "setup", "set", "using", "with", "from", "the", "for", "and", "that", "this", "what", "which", "your", "are"}
-        key_terms = [w for w in raw_words if w.lower() not in stop_words and len(w) >= 3]
+        stop_words = {
+            "find", "documents", "only", "how", "can", "setup", "set", "using", "with",
+            "from", "the", "for", "and", "that", "this", "what", "which", "your", "are",
+            "printer", "screen", "system", "file", "guide", "manual", "help"
+        }
+        
+        # Distinguish high-specificity terms (e.g. 'kyocera', '308ci', 'm400', 'taskalfa')
+        high_spec_terms = [w for w in raw_words if w.lower() not in stop_words and len(w) >= 3]
+        fallback_terms = [w for w in raw_words if len(w) >= 3]
+        search_terms = high_spec_terms if high_spec_terms else fallback_terms
 
         try:
-            # Step A: Best 1-2 N-Gram title matches (instead of dozens of loop queries)
-            if len(key_terms) >= 2:
-                top_phrase = " ".join(key_terms[:3])
-                title_res = self.client.table(self.table_name).select("id, text, metadata").ilike("metadata->>topic_title", f"%{top_phrase}%").limit(8).execute()
-                if title_res.data:
-                    for row in title_res.data:
+            # Step A: Check file_name and topic_title for any high-specificity / search terms
+            for term in search_terms[:3]:
+                meta_query = self.client.table(self.table_name).select("id, text, metadata") \
+                    .or_(f"metadata->>file_name.ilike.%{term}%,metadata->>topic_title.ilike.%{term}%")
+                if filter_json and "category" in filter_json:
+                    meta_query = meta_query.eq("metadata->>category", filter_json["category"])
+                meta_res = meta_query.limit(10).execute()
+                if meta_res.data:
+                    for row in meta_res.data:
                         c_id = row["id"]
                         combined_matches[c_id] = {
                             "id": c_id,
                             "text": row.get("text"),
                             "metadata": row.get("metadata", {}),
-                            "score": 0.98,
-                            "distance": 0.02
+                            "score": 0.99,
+                            "distance": 0.01
                         }
 
-            # Step B: Fast Combined Keyword Search for top 3 terms in a single query
-            significant_terms = sorted(set(key_terms), key=len, reverse=True)[:3]
-            if significant_terms:
-                or_conditions = ",".join([f"text.ilike.%{t}%" for t in significant_terms])
-                kw_res = self.client.table(self.table_name).select("id, text, metadata").or_(or_conditions).limit(15).execute()
+            # Step B: Text search prioritizing specific terms over generic stopwords
+            if search_terms:
+                primary_term = search_terms[0]
+                kw_query = self.client.table(self.table_name).select("id, text, metadata") \
+                    .ilike("text", f"%{primary_term}%")
+                if filter_json and "category" in filter_json:
+                    kw_query = kw_query.eq("metadata->>category", filter_json["category"])
+                kw_res = kw_query.limit(10).execute()
                 if kw_res.data:
                     for row in kw_res.data:
                         c_id = row["id"]
-                        if c_id in combined_matches:
-                            combined_matches[c_id]["score"] = min(combined_matches[c_id]["score"] + 0.15, 0.99)
-                        else:
+                        if c_id not in combined_matches:
                             combined_matches[c_id] = {
                                 "id": c_id,
                                 "text": row.get("text"),
                                 "metadata": row.get("metadata", {}),
-                                "score": 0.82,
-                                "distance": 0.18
+                                "score": 0.92,
+                                "distance": 0.08
                             }
         except Exception as e:
-            print(f"[Warning] Fast keyword search error: {e}")
+            print(f"[Warning] Keyword search error: {e}")
 
         # 4. Rerank & Sort Candidates
         sorted_chunks = sorted(combined_matches.values(), key=lambda x: x["score"], reverse=True)

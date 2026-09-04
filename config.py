@@ -14,6 +14,7 @@ COHERE_API_KEY = os.getenv("COHERE_API_KEY") or os.getenv("CohereAMPM_API_KEY") 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
+HF_API_TOKEN = os.getenv("HF_API_TOKEN", "")
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 

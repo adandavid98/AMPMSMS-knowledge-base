@@ -9,14 +9,12 @@ import hashlib
 import requests
 from typing import List
 
-# HuggingFace modern router endpoint
-HF_API_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2"
-HF_HEADERS = {}
-if os.environ.get("HF_API_TOKEN"):
-    HF_HEADERS["Authorization"] = f"Bearer {os.environ['HF_API_TOKEN']}"
+import config
 
+# HuggingFace modern router endpoint (sentence-transformers/all-MiniLM-L6-v2, 384-dim)
+HF_API_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
 _DIM = 384
-
+_warned_missing_hf_token = False
 
 def _hash_embed(texts: List[str]) -> List[List[float]]:
     """Deterministic 384-dim fallback if HuggingFace API is unavailable."""
@@ -31,22 +29,28 @@ def _hash_embed(texts: List[str]) -> List[List[float]]:
 
 def _hf_embed(texts: List[str]) -> List[List[float]]:
     """Call HuggingFace Inference API for all-MiniLM-L6-v2 embeddings."""
-    token = os.environ.get("HF_API_TOKEN")
+    global _warned_missing_hf_token
+    token = getattr(config, "HF_API_TOKEN", "") or os.environ.get("HF_API_TOKEN", "")
     if not token:
-        # Fast local fallback to avoid blocking remote calls without auth
+        if not _warned_missing_hf_token:
+            print("[Warning] HF_API_TOKEN is not set in .env. Semantic embeddings are falling back to hash vectors. Add HF_API_TOKEN to .env for real embeddings.")
+            _warned_missing_hf_token = True
         return _hash_embed(texts)
 
     try:
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
         payload = {"inputs": texts, "options": {"wait_for_model": True}}
-        resp = requests.post(HF_API_URL, headers={"Authorization": f"Bearer {token}"}, json=payload, timeout=3)
+        resp = requests.post(HF_API_URL, headers=headers, json=payload, timeout=15)
         if resp.status_code == 200:
             data = resp.json()
-            # API returns List[List[float]] for batch inputs
             if isinstance(data, list) and len(data) > 0:
                 if isinstance(data[0], list):
                     return data
-    except Exception:
-        pass
+        else:
+            print(f"[Warning] HuggingFace embedding API returned status {resp.status_code}: {resp.text[:200]}")
+    except Exception as e:
+        print(f"[Warning] HuggingFace embedding request failed: {e}")
+
     return _hash_embed(texts)
 
 

@@ -19,6 +19,7 @@ __pycache__/
 temp_chm_*
 temp_*
 *.log
+*.zip
 
 # IDE & OS Files
 .vscode/
