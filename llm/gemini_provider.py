@@ -74,7 +74,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                             model_name=clean_name,
                             system_instruction=system_prompt
                         )
-                        response = model.generate_content(contents, request_options={"timeout": 20.0})
+                        response = model.generate_content(contents, request_options={"timeout": 30.0})
                         if response and hasattr(response, "text") and response.text:
                             return response.text
                     except Exception as model_err:
@@ -87,6 +87,13 @@ class GeminiLLMProvider(BaseLLMProvider):
                 last_error = str(key_err)
                 print(f"[Gemini Key Error] Key ...{active_key[-6:]} failed: {key_err}")
                 continue
+
+        if "504" in str(last_error) or "deadline" in str(last_error).lower():
+            return (
+                "⚠️ **Gemini API Request Timed Out (HTTP 504)**\n\n"
+                "The operation exceeded the 30-second deadline while processing the conversation context and documentation.\n\n"
+                "**Solution**: Please click send again to retry, or switch to **Cohere** or **OpenRouter** in the left sidebar."
+            )
 
         if "503" in str(last_error) or "unavailable" in str(last_error).lower():
             return "⚠️ **Gemini API Overloaded (HTTP 503)**\n\nGoogle's servers are currently experiencing high demand. Please try again in a few moments or switch to a different provider (like Cohere or OpenRouter)."

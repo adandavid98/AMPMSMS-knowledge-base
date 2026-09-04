@@ -55,7 +55,7 @@ class VLMExtractor:
             for model_name in ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.6-flash", "gemini-3.7-flash"]:
                 try:
                     model = genai.GenerativeModel(model_name=model_name)
-                    response = model.generate_content([prompt, pil_img], request_options={"timeout": 20.0})
+                    response = model.generate_content([prompt, pil_img], request_options={"timeout": 30.0})
                     if response and response.text:
                         return response.text.strip()
                 except Exception as model_err:
