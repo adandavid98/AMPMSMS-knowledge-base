@@ -30,7 +30,7 @@ KNOWN_POS_ENTITIES = {
     'kyocera', 'taskalfa', 'verifone', 'toshiba', 'buypass', 'fiserv', 
     'ingenico', 'epson', 'zebra', 'rbslynk', 'mx915', 'payserver', 
     'storeman', 'reportbuilder', 'pinpad', 'invoicing', 'pricebook',
-    'fct_tab', 'alt_tab', 'rec_bat', 'loc', 'ssf', 'lane3000'
+    'vendor_tab', 'vendor', 'fct_tab', 'alt_tab', 'rec_bat', 'loc', 'ssf', 'lane3000'
 }
 
 class SupabaseVectorStore:
@@ -178,7 +178,63 @@ class SupabaseVectorStore:
             except Exception as fb_err:
                 print(f"[Supabase Error] Fallback vector search also failed: {fb_err}")
 
-        # 4. If we found strong exact keyword / metadata matches (>= 0.95), filter out low-relevance generic chunks (< 0.72)
+        # 4. Check Confirmed Fixes to ensure verified field fixes are always elevated
+        existing_ids = {m["id"] for m in matches}
+        try:
+            fixes_res = self.client.table(self.table_name).select("id, text, metadata").eq("metadata->>category", "Confirmed Fixes").execute()
+            if fixes_res.data:
+                for fix_row in fixes_res.data:
+                    fix_id = fix_row["id"]
+                    fix_meta = fix_row.get("metadata", {})
+                    fix_tt = (fix_meta.get("topic_title") or "").lower()
+                    fix_txt = (fix_row.get("text") or "").lower()
+
+                    title_hits = sum(1 for t in high_spec_terms if t.lower() in fix_tt)
+                    txt_hits = sum(1 for t in high_spec_terms if t.lower() in fix_txt)
+
+                    if title_hits > 0 or txt_hits >= 2:
+                        fix_score = 0.99 if title_hits > 0 else 0.96
+                        if fix_id in existing_ids:
+                            for m in matches:
+                                if m["id"] == fix_id:
+                                    m["score"] = max(m["score"], fix_score)
+                        else:
+                            matches.append({
+                                "id": fix_id,
+                                "text": fix_row.get("text"),
+                                "metadata": fix_meta,
+                                "score": fix_score,
+                                "distance": max(0.0, 1.0 - fix_score)
+                            })
+                            existing_ids.add(fix_id)
+        except Exception as fix_err:
+            print(f"[Supabase Warning] Error checking Confirmed Fixes: {fix_err}")
+
+        # 5. If query asks about database tables, also ensure SMSMembers Database tables topics are included
+        is_table_query = any(w in query.lower() for w in ["table", "tables", "_tab", "vendor_tab", "fct_tab"])
+        if is_table_query:
+            try:
+                table_chunks_res = self.client.table(self.table_name).select("id, text, metadata") \
+                    .eq("metadata->>topic_title", "Database tables").execute()
+                if table_chunks_res.data:
+                    for tc in table_chunks_res.data:
+                        tc_id = tc["id"]
+                        tc_txt = (tc.get("text") or "").lower()
+                        # If chunk contains the specific table mentioned in the query
+                        if any(t.lower() in tc_txt for t in high_spec_terms if t.lower() not in ["table", "tables"]):
+                            if tc_id not in existing_ids:
+                                matches.append({
+                                    "id": tc_id,
+                                    "text": tc.get("text"),
+                                    "metadata": tc.get("metadata", {}),
+                                    "score": 0.98,
+                                    "distance": 0.02
+                                })
+                                existing_ids.add(tc_id)
+            except Exception as tc_err:
+                print(f"[Supabase Warning] Error fetching Database tables chunks: {tc_err}")
+
+        # 6. If we found strong exact keyword / metadata matches (>= 0.95), filter out low-relevance generic chunks (< 0.72)
         has_strong_matches = any(m["score"] >= 0.95 for m in matches)
         if has_strong_matches:
             matches = [m for m in matches if m["score"] >= 0.72]

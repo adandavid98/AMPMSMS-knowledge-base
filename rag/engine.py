@@ -18,7 +18,13 @@ You will be given retrieved internal documentation excerpts (including structure
 Rules:
 1. Answer using the provided internal documentation excerpts AND any [Technician Attached Reference File] or [Image Content] provided in the question. Treat attached technical documents as highly authoritative.
 2. Ground your answer in the specific details found in the excerpts:
-   - When asked about database tables, system components, or categories, provide the EXACT table names (e.g., ALT_TAB, FCT_TAB, REC_BAT), category groups (e.g., Item tables, Auxiliary tables, System tables, Customer tables, Batch tables), and descriptions directly as documented in the manual.
+   - When asked about database tables, provide the EXACT table names and category groups directly as documented in the manual:
+     * Auxiliary tables include: VENDOR_TAB (Vendor/Supplier table), DEPT_TAB (Department), SDP_TAB (Sub-department), CAT_TAB (Category), DELV_TAB (Delivery), LIKE_TAB, MIX_TAB.
+     * System tables include: FCT_TAB (Function table - menu options, function keys, and security), FCZ_TAB (Function link), CLK_TAB (Operator table), CFG_TAB (Configuration), TER_TAB (Terminal), TLZ_TAB (Totalizer).
+     * Item tables include: OBJ_TAB (Main item / UPC), PRICE_TAB (Pricing), POS_TAB (Tax/Discounts), LOC_TAB (Shelf location).
+     * Customer tables include: CLT_TAB (Customer table), CLF_TAB (Shopper level), CLR_TAB (Risk level).
+     * Batch & Transaction tables include: REC_BAT / REC_HDR / REC_REG (Receiving), SAL_BAT / SAL_HDR / SAL_REG (Sales), INV_BAT / INV_HDR / INV_REG (Inventory).
+   - NEVER confuse or invent table names: FCT_TAB is strictly the Function table (menu options, titles, and security access), NOT the vendor table. The vendor table is VENDOR_TAB.
    - When asked for troubleshooting or setup, provide clear, numbered, step-by-step instructions.
 3. Do NOT replace specific documented tables, parameters, or categories with vague generalized overviews when exact data is in the excerpts.
 4. Do NOT include inline citations or source references in the text body (do NOT write '(Source: ...)' or '(Source #...)' in paragraphs). Write clean text. The system automatically lists the source references at the bottom of the message.
@@ -101,7 +107,7 @@ class RAGEngine:
             return query.strip()
 
         # If query already contains specific technical POS entities or error codes, skip LLM rewrite to eliminate latency
-        has_pos_entity = bool(re.search(r'(?i)\b(Kyocera|Taskalfa|308ci|Toshiba|Epson|Zebra|Verifone|Ingenico|Lane3000|RBSLynk|Mx915|M400|Buypass|Fiserv|partial|tender|WIC|PayServer|rtm|sqr|xf|reportbuilder|storeman|eod|bod|pinpad|invoicing|pricebook|fct_tab|alt_tab|rec_bat|loc|ssf|error\s*\d+|code\s*\d+)\b', clean_q))
+        has_pos_entity = bool(re.search(r'(?i)\b(vendor_tab|vendor\s+table|Kyocera|Taskalfa|308ci|Toshiba|Epson|Zebra|Verifone|Ingenico|Lane3000|RBSLynk|Mx915|M400|Buypass|Fiserv|partial|tender|WIC|PayServer|rtm|sqr|xf|reportbuilder|storeman|eod|bod|pinpad|invoicing|pricebook|fct_tab|alt_tab|rec_bat|loc|ssf|error\s*\d+|code\s*\d+)\b', clean_q))
         if has_pos_entity:
             return clean_q
 
@@ -192,7 +198,7 @@ class RAGEngine:
 
         # Ensure key exact POS, hardware, and file/folder entity terms are part of the primary search query
         key_entities = re.findall(
-            r'(?i)\b(Kyocera|Taskalfa|308ci|Toshiba|Epson|Zebra|Verifone|Ingenico|Lane3000|RBSLynk|Mx915|M400|Buypass|Fiserv|partial|tender|WIC|PayServer|rtm|sqr|xf|reportbuilder|storeman|eod|bod|pinpad|invoicing|pricebook|fct_tab|alt_tab|rec_bat|loc|ssf)\b',
+            r'(?i)\b(vendor_tab|vendor\s+table|Kyocera|Taskalfa|308ci|Toshiba|Epson|Zebra|Verifone|Ingenico|Lane3000|RBSLynk|Mx915|M400|Buypass|Fiserv|partial|tender|WIC|PayServer|rtm|sqr|xf|reportbuilder|storeman|eod|bod|pinpad|invoicing|pricebook|fct_tab|alt_tab|rec_bat|loc|ssf)\b',
             full_question
         )
         if key_entities:
