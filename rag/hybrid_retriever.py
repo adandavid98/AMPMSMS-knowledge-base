@@ -1,6 +1,9 @@
 import re
 from typing import List, Dict, Any, Optional
-from rank_bm25 import BM25Okapi
+try:
+    from rank_bm25 import BM25Okapi
+except ImportError:
+    BM25Okapi = None
 
 class HybridRetriever:
     """
@@ -84,6 +87,9 @@ class HybridRetriever:
                             })
 
         # 3. Reciprocal Rank Fusion (RRF)
+        if not bm25_results:
+            return vector_results[:top_k]
+
         rrf_k = 60
         scores: Dict[str, float] = {}
         doc_map: Dict[str, Dict[str, Any]] = {}

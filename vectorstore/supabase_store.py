@@ -4,6 +4,35 @@ from supabase import create_client, Client
 import config
 from .embeddings import GeminiEmbeddingFunction
 
+STOP_WORDS = {
+    'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', 
+    'as', 'at', 'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 
+    'by', 'can', 'cannot', 'could', 'did', 'do', 'does', 'doing', 'down', 'during', 'each', 
+    'few', 'for', 'from', 'further', 'had', 'has', 'have', 'having', 'he', 'her', 'here', 
+    'hers', 'herself', 'him', 'himself', 'his', 'how', 'i', 'if', 'in', 'into', 'is', 'it', 
+    'its', 'itself', 'me', 'more', 'most', 'my', 'myself', 'no', 'nor', 'not', 'of', 'off', 
+    'on', 'once', 'only', 'or', 'other', 'ought', 'our', 'ours', 'ourselves', 'out', 'over', 
+    'own', 'same', 'she', 'should', 'so', 'some', 'such', 'than', 'that', 'the', 'their', 
+    'theirs', 'them', 'themselves', 'then', 'there', 'these', 'they', 'this', 'those', 
+    'through', 'to', 'too', 'under', 'until', 'up', 'very', 'was', 'we', 'were', 'what', 
+    'when', 'where', 'which', 'while', 'who', 'whom', 'why', 'with', 'would', 'you', 
+    'your', 'yours', 'yourself', 'yourselves',
+    'find', 'documents', 'document', 'setup', 'set', 'using', 'use', 'file', 'guide', 
+    'manual', 'help', 'system', 'screen', 'error', 'issue', 'problem', 'working', 
+    'work', 'steps', 'step', 'configure', 'configuration', 'install', 'installation',
+    'printer', 'printers', 'device', 'devices', 'option', 'options', 'menu', 'click', 
+    'press', 'select', 'page', 'button', 'window', 'display', 'check', 'verify', 'pdf', 'chm',
+    'add', 'create', 'delete', 'edit', 'update', 'make', 'run', 'print', 'open', 'close', 
+    'start', 'stop', 'test', 'show', 'view', 'get', 'look', 'see', 'need', 'want', 'please'
+}
+
+KNOWN_POS_ENTITIES = {
+    'kyocera', 'taskalfa', 'verifone', 'toshiba', 'buypass', 'fiserv', 
+    'ingenico', 'epson', 'zebra', 'rbslynk', 'mx915', 'payserver', 
+    'storeman', 'reportbuilder', 'pinpad', 'invoicing', 'pricebook',
+    'fct_tab', 'alt_tab', 'rec_bat', 'loc', 'ssf', 'lane3000'
+}
+
 class SupabaseVectorStore:
     """Manages cloud vector database operations in Supabase pgvector with hybrid search."""
 
@@ -58,7 +87,8 @@ class SupabaseVectorStore:
     def search(self, query: str, top_k: int = 6, category_filter: str = None) -> List[Dict[str, Any]]:
         """
         Executes consolidated hybrid search (vector similarity + keyword matching)
-        in a single database round-trip via match_documents_hybrid RPC.
+        in a single database round-trip via match_documents_hybrid RPC, with
+        intelligent keyword extraction and metadata re-ranking.
         """
         # 1. Fast Google native query embedding (~50-100ms)
         raw_query_emb = self.embedding_fn.embed_query(query)
@@ -76,26 +106,56 @@ class SupabaseVectorStore:
         if category_filter and category_filter not in ["General", "All Documentation", ""]:
             filter_json = {"category": category_filter}
 
+        # 2. Extract high-specificity technical keywords (distinguishing hardware/models from stop words)
+        raw_words = re.findall(r'[A-Za-z0-9_\-\.]{2,}', query)
+        high_spec_terms = [w for w in raw_words if w.lower() not in STOP_WORDS and len(w) >= 3]
+
+        primary_kw = ""
+        if high_spec_terms:
+            # Priority 1: Hardware model codes with digits/hyphens (e.g. 308ci, m400, a776, lane3000)
+            alphanumeric_models = [w for w in high_spec_terms if any(c.isdigit() for c in w)]
+            if alphanumeric_models:
+                primary_kw = alphanumeric_models[0]
+            else:
+                # Priority 2: Known hardware/software vendor brands
+                brand_terms = [w for w in high_spec_terms if w.lower() in KNOWN_POS_ENTITIES]
+                if brand_terms:
+                    primary_kw = brand_terms[0]
+                else:
+                    primary_kw = high_spec_terms[0]
+
         matches: List[Dict[str, Any]] = []
 
-        # 2. Consolidated Hybrid Search in 1 DB Round-Trip
+        # 3. Consolidated Hybrid Search in 1 DB Round-Trip
         try:
             res = self.client.rpc("match_documents_hybrid", {
                 "query_embedding": query_vec,
-                "query_text": query,
-                "match_count": max(top_k * 2, 10),
+                "query_text": primary_kw,
+                "match_count": max(top_k * 3, 15),
                 "filter": filter_json
             }).execute()
 
             if res.data:
                 for row in res.data:
                     sim = float(row.get("similarity", 0.0))
+                    meta = row.get("metadata", {})
+                    fn = (meta.get("file_name") or "").lower()
+                    tt = (meta.get("topic_title") or "").lower()
+
+                    # Re-ranking: Boost documents whose file_name or topic_title matches query terms
+                    term_matches = sum(1 for t in high_spec_terms if t.lower() in fn or t.lower() in tt)
+                    final_score = sim
+                    if term_matches > 0:
+                        final_score = min(0.99, 0.95 + (0.02 * term_matches))
+                    elif meta.get("category") == "Confirmed Fixes" and any(t.lower() in tt for t in high_spec_terms):
+                        final_score = 0.99
+
                     matches.append({
                         "id": row.get("id"),
                         "text": row.get("text"),
-                        "metadata": row.get("metadata", {}),
-                        "score": sim,
-                        "distance": max(0.0, 1.0 - sim)
+                        "metadata": meta,
+                        "score": final_score,
+                        "distance": max(0.0, 1.0 - final_score)
                     })
         except Exception as e:
             print(f"[Supabase Warning] match_documents_hybrid RPC failed ({e}). Falling back to match_documents.")
@@ -118,7 +178,12 @@ class SupabaseVectorStore:
             except Exception as fb_err:
                 print(f"[Supabase Error] Fallback vector search also failed: {fb_err}")
 
-        # 3. Sort Candidates and return top_k
+        # 4. If we found strong exact keyword / metadata matches (>= 0.95), filter out low-relevance generic chunks (< 0.72)
+        has_strong_matches = any(m["score"] >= 0.95 for m in matches)
+        if has_strong_matches:
+            matches = [m for m in matches if m["score"] >= 0.72]
+
+        # 5. Sort Candidates and return top_k
         sorted_chunks = sorted(matches, key=lambda x: x["score"], reverse=True)
         return sorted_chunks[:top_k]
 

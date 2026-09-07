@@ -101,7 +101,7 @@ class RAGEngine:
             return query.strip()
 
         # If query already contains specific technical POS entities or error codes, skip LLM rewrite to eliminate latency
-        has_pos_entity = bool(re.search(r'(?i)\b(RBSLynk|Mx915|M400|Buypass|Fiserv|partial|tender|WIC|PayServer|rtm|sqr|xf|reportbuilder|storeman|eod|bod|pinpad|invoicing|pricebook|fct_tab|alt_tab|rec_bat|loc|ssf|error\s*\d+|code\s*\d+)\b', clean_q))
+        has_pos_entity = bool(re.search(r'(?i)\b(Kyocera|Taskalfa|308ci|Toshiba|Epson|Zebra|Verifone|Ingenico|Lane3000|RBSLynk|Mx915|M400|Buypass|Fiserv|partial|tender|WIC|PayServer|rtm|sqr|xf|reportbuilder|storeman|eod|bod|pinpad|invoicing|pricebook|fct_tab|alt_tab|rec_bat|loc|ssf|error\s*\d+|code\s*\d+)\b', clean_q))
         if has_pos_entity:
             return clean_q
 
@@ -192,7 +192,7 @@ class RAGEngine:
 
         # Ensure key exact POS, hardware, and file/folder entity terms are part of the primary search query
         key_entities = re.findall(
-            r'(?i)\b(RBSLynk|Mx915|M400|Buypass|Fiserv|partial|tender|WIC|PayServer|rtm|sqr|xf|reportbuilder|storeman|eod|bod|pinpad|invoicing|pricebook|fct_tab|alt_tab|rec_bat|loc|ssf)\b',
+            r'(?i)\b(Kyocera|Taskalfa|308ci|Toshiba|Epson|Zebra|Verifone|Ingenico|Lane3000|RBSLynk|Mx915|M400|Buypass|Fiserv|partial|tender|WIC|PayServer|rtm|sqr|xf|reportbuilder|storeman|eod|bod|pinpad|invoicing|pricebook|fct_tab|alt_tab|rec_bat|loc|ssf)\b',
             full_question
         )
         if key_entities:
