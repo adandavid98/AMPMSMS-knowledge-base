@@ -57,9 +57,10 @@ class SupabaseVectorStore:
 
     def search(self, query: str, top_k: int = 6, category_filter: str = None) -> List[Dict[str, Any]]:
         """
-        Executes hybrid search (vector similarity + keyword matching + score re-ranking) in Supabase.
+        Executes consolidated hybrid search (vector similarity + keyword matching)
+        in a single database round-trip via match_documents_hybrid RPC.
         """
-        # 1. Embed query text for vector search
+        # 1. Fast Google native query embedding (~50-100ms)
         raw_query_emb = self.embedding_fn.embed_query(query)
         if isinstance(raw_query_emb, list) and len(raw_query_emb) > 0:
             query_vec = raw_query_emb[0]
@@ -75,91 +76,52 @@ class SupabaseVectorStore:
         if category_filter and category_filter not in ["General", "All Documentation", ""]:
             filter_json = {"category": category_filter}
 
-        combined_matches: Dict[str, Dict[str, Any]] = {}
+        matches: List[Dict[str, Any]] = []
 
-        # 2. Vector Similarity Search (Fetch top 20 candidates, filter by min threshold)
-        MIN_SIMILARITY = 0.35  # Discard chunks with very low semantic relevance
+        # 2. Consolidated Hybrid Search in 1 DB Round-Trip
         try:
-            res = self.client.rpc("match_documents", {
+            res = self.client.rpc("match_documents_hybrid", {
                 "query_embedding": query_vec,
-                "match_count": 20,
+                "query_text": query,
+                "match_count": max(top_k * 2, 10),
                 "filter": filter_json
             }).execute()
 
             if res.data:
                 for row in res.data:
-                    c_id = row.get("id")
                     sim = float(row.get("similarity", 0.0))
-                    if sim < MIN_SIMILARITY:
-                        print(f"[Search] Dropped low-relevance chunk (score={sim:.2f}): {row.get('metadata', {}).get('topic_title', c_id)}")
-                        continue
-                    combined_matches[c_id] = {
-                        "id": c_id,
+                    matches.append({
+                        "id": row.get("id"),
                         "text": row.get("text"),
                         "metadata": row.get("metadata", {}),
                         "score": sim,
-                        "distance": 1.0 - sim
-                    }
+                        "distance": max(0.0, 1.0 - sim)
+                    })
         except Exception as e:
-            print(f"[Warning] Vector search error: {e}")
-
-        # 3. Optimized Keyword, File Name & Topic Title Search
-        raw_words = re.findall(r'[A-Za-z0-9_\-\.]{3,}', query)
-        stop_words = {
-            "find", "documents", "only", "how", "can", "setup", "set", "using", "with",
-            "from", "the", "for", "and", "that", "this", "what", "which", "your", "are",
-            "printer", "screen", "system", "file", "guide", "manual", "help"
-        }
-        
-        # Distinguish high-specificity terms (e.g. 'kyocera', '308ci', 'm400', 'taskalfa')
-        high_spec_terms = [w for w in raw_words if w.lower() not in stop_words and len(w) >= 3]
-        fallback_terms = [w for w in raw_words if len(w) >= 3]
-        search_terms = high_spec_terms if high_spec_terms else fallback_terms
-
-        try:
-            # Step A: Check file_name and topic_title for any high-specificity / search terms
-            for term in search_terms[:3]:
-                meta_query = self.client.table(self.table_name).select("id, text, metadata") \
-                    .or_(f"metadata->>file_name.ilike.%{term}%,metadata->>topic_title.ilike.%{term}%")
-                if filter_json and "category" in filter_json:
-                    meta_query = meta_query.eq("metadata->>category", filter_json["category"])
-                meta_res = meta_query.limit(10).execute()
-                if meta_res.data:
-                    for row in meta_res.data:
-                        c_id = row["id"]
-                        combined_matches[c_id] = {
-                            "id": c_id,
+            print(f"[Supabase Warning] match_documents_hybrid RPC failed ({e}). Falling back to match_documents.")
+            try:
+                fallback_res = self.client.rpc("match_documents", {
+                    "query_embedding": query_vec,
+                    "match_count": top_k,
+                    "filter": filter_json
+                }).execute()
+                if fallback_res.data:
+                    for row in fallback_res.data:
+                        sim = float(row.get("similarity", 0.0))
+                        matches.append({
+                            "id": row.get("id"),
                             "text": row.get("text"),
                             "metadata": row.get("metadata", {}),
-                            "score": 0.99,
-                            "distance": 0.01
-                        }
+                            "score": sim,
+                            "distance": max(0.0, 1.0 - sim)
+                        })
+            except Exception as fb_err:
+                print(f"[Supabase Error] Fallback vector search also failed: {fb_err}")
 
-            # Step B: Text search prioritizing specific terms over generic stopwords
-            if search_terms:
-                primary_term = search_terms[0]
-                kw_query = self.client.table(self.table_name).select("id, text, metadata") \
-                    .ilike("text", f"%{primary_term}%")
-                if filter_json and "category" in filter_json:
-                    kw_query = kw_query.eq("metadata->>category", filter_json["category"])
-                kw_res = kw_query.limit(10).execute()
-                if kw_res.data:
-                    for row in kw_res.data:
-                        c_id = row["id"]
-                        if c_id not in combined_matches:
-                            combined_matches[c_id] = {
-                                "id": c_id,
-                                "text": row.get("text"),
-                                "metadata": row.get("metadata", {}),
-                                "score": 0.92,
-                                "distance": 0.08
-                            }
-        except Exception as e:
-            print(f"[Warning] Keyword search error: {e}")
-
-        # 4. Rerank & Sort Candidates
-        sorted_chunks = sorted(combined_matches.values(), key=lambda x: x["score"], reverse=True)
+        # 3. Sort Candidates and return top_k
+        sorted_chunks = sorted(matches, key=lambda x: x["score"], reverse=True)
         return sorted_chunks[:top_k]
+
 
     def count(self) -> int:
         """Returns total document count in Supabase table."""

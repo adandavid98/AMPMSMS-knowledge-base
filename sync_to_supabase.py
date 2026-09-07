@@ -1,85 +1,130 @@
 import sys
+import time
 import concurrent.futures
 import config
-from vectorstore.chroma_store import VectorStoreManager as ChromaStoreManager
 from vectorstore.supabase_store import SupabaseVectorStore
 from vectorstore.embeddings import GeminiEmbeddingFunction
 
 def sync():
-    """Fast multithreaded ONNX 384-dim cloud migration to Supabase (finishes in seconds)."""
-    if not config.SUPABASE_URL or not (config.SUPABASE_KEY or config.SUPABASE_SERVICE_ROLE_KEY):
-        print("[Error] SUPABASE_URL and SUPABASE_KEY must be set in your .env file before running sync.")
+    """Fast Google Native 768-dim cloud migration to Supabase."""
+    key = config.SUPABASE_SERVICE_ROLE_KEY or config.SUPABASE_KEY
+    if not config.SUPABASE_URL or not key:
+        print("[Error] SUPABASE_URL and SUPABASE_KEY/SERVICE_ROLE_KEY must be set in your .env file before running sync.")
         sys.exit(1)
 
-    print("=== AMPM Service POS Assistant - Fast Multithreaded ONNX Cloud Migration ===")
+    print("=== AMPM Service POS Assistant - Fast Google 768-dim Cloud Migration ===")
 
-    # 1. Load local ChromaDB store
-    print("\n[1/3] Reading text chunks from local ChromaDB...")
-    chroma_store = ChromaStoreManager()
-    local_count = chroma_store.count()
-    print(f"      Found {local_count} total topic chunks.")
-
-    if local_count == 0:
-        print("[Warning] Local ChromaDB is empty! Nothing to migrate.")
-        return
-
-    records = chroma_store.collection.get(include=["documents", "metadatas"])
-    ids = records["ids"]
-    docs = records["documents"]
-    metas = records["metadatas"]
-
-    # 2. Connect to Supabase Cloud
-    print("\n[2/3] Connecting to Supabase Cloud pgvector...")
     supabase_store = SupabaseVectorStore()
-    print(f"      Connected to Supabase project: {config.SUPABASE_URL}")
+    client = supabase_store.client
 
-    # 3. Multithreaded ONNX Upload (5 workers, 150 docs per batch)
-    batch_size = 150
-    batches = []
-    for i in range(0, len(ids), batch_size):
-        batches.append((
-            ids[i:i + batch_size],
-            docs[i:i + batch_size],
-            metas[i:i + batch_size]
-        ))
+    # 1. Check if documents_backup_384 exists in Supabase
+    backup_count = 0
+    try:
+        b_res = client.table("documents_backup_384").select("id", count="exact").limit(1).execute()
+        backup_count = b_res.count or 0
+    except Exception:
+        backup_count = 0
 
-    print(f"\n[3/3] Uploading {len(ids)} chunks using 5 parallel workers...")
+    embed_fn = GeminiEmbeddingFunction()
 
-    def process_batch(batch_tuple):
-        b_ids, b_docs, b_metas = batch_tuple
-        embed_fn = GeminiEmbeddingFunction()
-        b_embeddings = embed_fn(b_docs)
+    if backup_count > 0:
+        print(f"\n[1/2] Found {backup_count} document chunks in Supabase backup table (documents_backup_384).")
+        print(f"[2/2] Generating 768-dim Google embeddings and populating 'documents' table...")
 
-        records_to_upsert = []
-        for idx in range(len(b_ids)):
-            raw_emb = b_embeddings[idx]
-            vec = raw_emb.tolist() if hasattr(raw_emb, "tolist") else [float(x) for x in raw_emb]
-            records_to_upsert.append({
-                "id": b_ids[idx],
-                "text": b_docs[idx],
-                "metadata": b_metas[idx],
-                "embedding": vec
-            })
-
-        res = supabase_store.client.table(supabase_store.table_name).upsert(records_to_upsert).execute()
-        return len(res.data) if res.data else 0
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [executor.submit(process_batch, b) for b in batches]
+        page_size = 1000
         total_uploaded = 0
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                uploaded_count = future.result()
-                total_uploaded += uploaded_count
-                pct = (total_uploaded / len(ids)) * 100
-                print(f"      Progress: {total_uploaded}/{len(ids)} ({pct:.1f}%) uploaded...")
-            except Exception as e:
-                print(f"      [Warning] Batch upload error: {e}")
+        t0 = time.time()
+
+        for start_idx in range(0, backup_count, page_size):
+            end_idx = min(start_idx + page_size - 1, backup_count - 1)
+            fetch_res = client.table("documents_backup_384").select("id, text, metadata").range(start_idx, end_idx).execute()
+            rows = fetch_res.data or []
+            if not rows:
+                break
+
+            # Fast batch embedding (80 chunks per request on Paid Tier)
+            batch_size = 80
+            for b_i in range(0, len(rows), batch_size):
+                b_slice = rows[b_i:b_i + batch_size]
+                b_ids = [r["id"] for r in b_slice]
+
+                # Check which chunks already exist in 'documents'
+                try:
+                    chk_res = client.table(supabase_store.table_name).select("id").in_("id", b_ids).execute()
+                    already_done = set(r["id"] for r in (chk_res.data or []))
+                except Exception:
+                    already_done = set()
+
+                to_process = [r for r in b_slice if r["id"] not in already_done]
+
+                if to_process:
+                    texts = [r["text"] for r in to_process]
+                    embs = embed_fn(texts)
+
+                    records = []
+                    for idx, r in enumerate(to_process):
+                        records.append({
+                            "id": r["id"],
+                            "text": r["text"],
+                            "metadata": r.get("metadata", {}),
+                            "embedding": embs[idx]
+                        })
+
+                    client.table(supabase_store.table_name).upsert(records).execute()
+                    time.sleep(0.1)  # Minimal micro-pause on paid tier
+
+                total_uploaded += len(b_slice)
+                pct = (total_uploaded / backup_count) * 100
+                elapsed = time.time() - t0
+                print(f"      Progress: {total_uploaded}/{backup_count} ({pct:.1f}%) processed in {elapsed:.1f}s...")
+
+
+
+    else:
+        # Fallback to local ChromaDB
+        print("\n[1/2] Reading text chunks from local ChromaDB...")
+        from vectorstore.chroma_store import VectorStoreManager as ChromaStoreManager
+        chroma_store = ChromaStoreManager()
+        local_count = chroma_store.count()
+        print(f"      Found {local_count} total topic chunks.")
+
+        if local_count == 0:
+            print("[Warning] No documents found in backup or local ChromaDB to migrate.")
+            return
+
+        records = chroma_store.collection.get(include=["documents", "metadatas"])
+        ids = records["ids"]
+        docs = records["documents"]
+        metas = records["metadatas"]
+
+        print(f"\n[2/2] Uploading {len(ids)} chunks with 768-dim Google embeddings...")
+        batch_size = 80
+        total_uploaded = 0
+        for i in range(0, len(ids), batch_size):
+            b_ids = ids[i:i + batch_size]
+            b_docs = docs[i:i + batch_size]
+            b_metas = metas[i:i + batch_size]
+            b_embeddings = embed_fn(b_docs)
+
+            upsert_records = []
+            for idx in range(len(b_ids)):
+                upsert_records.append({
+                    "id": b_ids[idx],
+                    "text": b_docs[idx],
+                    "metadata": b_metas[idx],
+                    "embedding": b_embeddings[idx]
+                })
+
+            client.table(supabase_store.table_name).upsert(upsert_records).execute()
+            total_uploaded += len(upsert_records)
+            pct = (total_uploaded / len(ids)) * 100
+            print(f"      Progress: {total_uploaded}/{len(ids)} ({pct:.1f}%) uploaded...")
 
     print("\n=======================================================")
     print("Migration Complete!")
     print(f"Supabase total documents count: {supabase_store.count()}")
     print("=======================================================")
+
 
 if __name__ == "__main__":
     sync()
