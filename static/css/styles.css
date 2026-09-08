@@ -1327,6 +1327,71 @@ body {
   display: none;
 }
 
+/* Clean Print / Save as PDF Stylesheet */
+@media print {
+  body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+
+  .sidebar,
+  .chat-input-container,
+  .disclaimer-text,
+  .feedback-toolbar,
+  .feedback-toast,
+  .msg-dropdown-menu,
+  .new-chat-btn,
+  .status-badge,
+  .auth-overlay,
+  .global-toast {
+    display: none !important;
+  }
+
+  .app-container {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .main-content {
+    display: block !important;
+    height: auto !important;
+    padding: 1rem 0 !important;
+    overflow: visible !important;
+  }
+
+  .messages-container {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .message-row {
+    max-width: 100% !important;
+    margin-bottom: 1.5rem !important;
+    page-break-inside: avoid !important;
+  }
+
+  .message-bubble {
+    color: #111827 !important;
+    background: #F9FAFB !important;
+    border: 1px solid #E5E7EB !important;
+    box-shadow: none !important;
+  }
+
+  .message-row.user .message-bubble {
+    background: #EFF6FF !important;
+    color: #1E3A8A !important;
+    border-color: #BFDBFE !important;
+  }
+
+  .citations-box {
+    background: #F3F4F6 !important;
+    border-color: #E5E7EB !important;
+  }
+}
+
 
 
 
