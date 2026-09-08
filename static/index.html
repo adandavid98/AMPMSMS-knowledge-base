@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="/static/css/styles.css?v=2.2">
 </head>
 
 <body>
@@ -45,8 +45,8 @@
         <label class="section-label" for="providerSelect">LLM Provider</label>
         <select id="providerSelect" class="select-control">
           <option value="gemini" selected>Google Gemini 3.6 Flash</option>
-          <option value="openrouter">OpenRouter Models</option>
-          <option value="groq">Groq API (Llama-3.3)</option>
+          <option value="cohere">Cohere (Command R - RAG Specialist)</option>
+          <option value="openrouter">OpenRouter Models (Free)</option>
         </select>
       </div>
 
@@ -70,9 +70,14 @@
             <button type="button" class="icon-toggle-btn" id="toggleGeminiKey" title="Show/Hide Key">👁️</button>
           </div>
           <div class="key-input-group" style="margin-top: 0.5rem;">
-            <input type="password" id="groqKeyInput" class="input-control" placeholder="Groq API Key (gsk_...)"
+            <input type="password" id="cohereKeyInput" class="input-control" placeholder="Cohere API Key (Trial/Prod)"
               autocomplete="off">
-            <button type="button" class="icon-toggle-btn" id="toggleGroqKey" title="Show/Hide Key">👁️</button>
+            <button type="button" class="icon-toggle-btn" id="toggleCohereKey" title="Show/Hide Key">👁️</button>
+          </div>
+          <div class="key-input-group" style="margin-top: 0.5rem;">
+            <input type="password" id="openrouterKeyInput" class="input-control" placeholder="OpenRouter API Key (sk-or-...)"
+              autocomplete="off">
+            <button type="button" class="icon-toggle-btn" id="toggleOpenrouterKey" title="Show/Hide Key">👁️</button>
           </div>
           <div class="key-input-group" style="margin-top: 0.5rem;">
             <input type="password" id="tavilyKeyInput" class="input-control" placeholder="Tavily API Key (tvly-...)"
@@ -123,17 +128,31 @@
     </aside>
 
     <!-- Main Chat Workspace -->
-    <main class="main-content">
+    <main class="main-content initial-center-mode" id="mainContent">
       <header class="chat-header">
-        <div class="chat-header-title">SMS Knowledge Base</div>
+        <div class="chat-header-left">
+          <div class="chat-header-title">SMS Knowledge Base</div>
+          <button type="button" id="newChatBtn" class="new-chat-btn" title="Start new chat session">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>New Chat</span>
+          </button>
+        </div>
         <div class="status-badge">
           <span class="status-dot"></span>
           System Online
         </div>
       </header>
 
+      <!-- Center Hero Header (Initial State) -->
+      <div class="hero-container" id="heroContainer">
+        <h1 class="hero-title">How can I help troubleshoot today?</h1>
+      </div>
+
       <!-- Message History Container -->
-      <div class="messages-container" id="messagesContainer">
+      <div class="messages-container hidden" id="messagesContainer">
         <div class="message-row assistant">
           <div class="message-avatar">AI</div>
           <div class="message-bubble">
@@ -146,25 +165,40 @@
       </div>
 
       <!-- Input Bar -->
-      <div class="chat-input-container">
+      <div class="chat-input-container" id="chatInputContainer">
         <!-- Attachments Preview Container -->
         <div id="attachmentsPreviewContainer" class="attachments-preview-container hidden"></div>
 
-        <form class="chat-form" id="chatForm">
-          <button type="button" id="attachBtn" class="attach-btn"
-            title="Attach file or image (or Ctrl+V to paste screenshot)">
-            +
-          </button>
-          <input type="file" id="promptFileInput" multiple accept="image/*,.png,.jpg,.jpeg,.webp,.pdf,.txt,.log"
-            style="display: none;">
+        <form class="chat-form" id="chatForm" onsubmit="return false;">
+          <div class="search-input-capsule">
+            <button type="button" id="attachBtn" class="attach-btn"
+              title="Attach file or image (or Ctrl+V to paste screenshot)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+            <input type="file" id="promptFileInput" multiple accept="image/*,.png,.jpg,.jpeg,.webp,.pdf,.txt,.log"
+              style="display: none;">
 
-          <input type="text" id="chatInput" class="chat-input"
-            placeholder="Describe register/server symptom or paste screenshot (Ctrl+V)..." autocomplete="off">
-          <button type="submit" class="send-btn" id="sendBtn">
-            <span>Send</span>
-            <span>➔</span>
-          </button>
+            <textarea id="chatInput" class="chat-input" rows="1"
+              placeholder="Describe register/server symptom or paste screenshot (Ctrl+V)..." autocomplete="off"></textarea>
+
+            <button type="button" class="send-btn hidden" id="sendBtn" title="Send query">
+              <svg class="send-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5"></line>
+                <polyline points="5 12 12 5 19 12"></polyline>
+              </svg>
+            </button>
+
+            <button type="button" class="cancel-btn hidden" id="cancelBtn" title="Cancel generation">
+              <svg class="stop-icon" width="14" height="14" viewBox="0 0 24 24" fill="#EF4444">
+                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+              </svg>
+            </button>
+          </div>
         </form>
+        <div class="disclaimer-text">AMPM Service</div>
       </div>
     </main>
 
@@ -200,7 +234,8 @@
 
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v=2.2"></script>
 </body>
+
 
 </html>

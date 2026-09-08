@@ -414,6 +414,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     chatInput.addEventListener('input', () => {
+        if (sendBtn) sendBtn.disabled = false;
         updateChatInputHeight();
         updateSendBtnVisibility();
     });
@@ -421,8 +422,8 @@ document.addEventListener('DOMContentLoaded', () => {
     chatInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            if (!sendBtn.disabled && (chatInput.value.trim() || attachedImages.length || attachedTextFiles.length)) {
-                chatForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+            if (chatInput.value.trim() || attachedImages.length || attachedTextFiles.length) {
+                handleChatSubmit(e);
             }
         }
     });
@@ -521,11 +522,15 @@ document.addEventListener('DOMContentLoaded', () => {
         newChatBtn.addEventListener('click', resetToInitialMode);
     }
 
-    // Event listener for chat submission
-    chatForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
+    // Dedicated chat submission handler
+    async function handleChatSubmit(e) {
+        if (e) {
+            if (typeof e.preventDefault === 'function') e.preventDefault();
+            if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        }
         const question = chatInput.value.trim();
         if (!question && attachedImages.length === 0 && attachedTextFiles.length === 0) return;
+        if (sendBtn && sendBtn.disabled) return;
 
         isUserCancelledQuery = false;
         currentSubmittedPrompt = question;
@@ -551,8 +556,10 @@ document.addEventListener('DOMContentLoaded', () => {
         currentUserMsgId = appendMessage('user', displayMsg);
         chatInput.value = '';
         chatInput.style.height = 'auto';
-        sendBtn.disabled = true;
-        sendBtn.classList.add('hidden');
+        if (sendBtn) {
+            sendBtn.disabled = true;
+            sendBtn.classList.add('hidden');
+        }
         if (cancelBtn) cancelBtn.classList.remove('hidden');
 
         const currentImages = attachedImages.map(i => i.data);
@@ -590,8 +597,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 signal: currentChatAbortController.signal,
                 body: JSON.stringify({
                     question: question,
-                    provider: providerSelect.value,
-                    category: categorySelect.value || null,
+                    provider: providerSelect ? providerSelect.value : 'gemini',
+                    category: categorySelect ? (categorySelect.value || null) : null,
                     top_k: 5,
                     images: currentImages,
                     attachments: currentAttachments,
@@ -645,8 +652,10 @@ document.addEventListener('DOMContentLoaded', () => {
             appendMessage('assistant', `⚠️ **Network Error**: Could not connect to API server (${error.message}).`);
         } finally {
             if (cancelBtn) cancelBtn.classList.add('hidden');
-            sendBtn.disabled = false;
-            updateSendBtnVisibility();
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                updateSendBtnVisibility();
+            }
             if (!isUserCancelledQuery) {
                 chatInput.focus();
             }
@@ -654,7 +663,22 @@ document.addEventListener('DOMContentLoaded', () => {
             currentTypingIndicatorId = null;
             currentUserMsgId = null;
         }
-    });
+    }
+
+    // Attach submit listeners to form and send button
+    if (chatForm) {
+        chatForm.addEventListener('submit', (e) => {
+            if (e && e.preventDefault) e.preventDefault();
+            handleChatSubmit(e);
+        });
+    }
+
+    if (sendBtn) {
+        sendBtn.addEventListener('click', (e) => {
+            if (e && e.preventDefault) e.preventDefault();
+            handleChatSubmit(e);
+        });
+    }
 
     // Handle PDF Drag and Drop Upload
     uploadZone.addEventListener('click', () => fileInput.click());
