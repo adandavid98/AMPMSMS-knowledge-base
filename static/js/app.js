@@ -69,6 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     hideAuthOverlay();
                     showUserBadge(data.user || email);
                     fetchStats();
+                    loadSharedConversationFromHash();
                 } else {
                     if (authError) {
                         let errorText = 'Authentication failed.';
@@ -166,6 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 hideAuthOverlay();
                 showUserBadge(user || 'AMPM Technician');
                 fetchStats();
+                loadSharedConversationFromHash();
             } else {
                 showAuthOverlay();
             }
@@ -480,6 +482,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function resetToInitialMode() {
+        if (window.location.hash && window.location.hash.includes('#share=')) {
+            history.replaceState(null, '', window.location.pathname);
+        }
         if (currentChatAbortController) {
             currentChatAbortController.abort();
             currentChatAbortController = null;
@@ -870,6 +875,120 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Global Floating Toast Notification
+    function showToast(msg, duration = 2500) {
+        let toast = document.getElementById('globalToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'globalToast';
+            toast.className = 'global-toast';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = msg;
+        toast.classList.remove('hidden', 'fade-out');
+        toast.classList.add('visible');
+        clearTimeout(toast._timeout);
+        toast._timeout = setTimeout(() => {
+            toast.classList.add('fade-out');
+            setTimeout(() => {
+                toast.classList.remove('visible', 'fade-out');
+                toast.classList.add('hidden');
+            }, 300);
+        }, duration);
+    }
+
+    // Robust Clipboard Copy with Fallback
+    async function copyToClipboard(text) {
+        if (!text) return false;
+        if (navigator.clipboard && window.isSecureContext) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (err) {
+                console.warn('navigator.clipboard failed, attempting fallback', err);
+            }
+        }
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.top = '-9999px';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        let success = false;
+        try {
+            success = document.execCommand('copy');
+        } catch (err) {
+            success = false;
+        }
+        document.body.removeChild(textArea);
+        return success;
+    }
+
+    // Format Entire Conversation as Markdown Text
+    function getFormattedConversation() {
+        if (!conversationHistory || conversationHistory.length === 0) {
+            return 'No conversation history found.';
+        }
+        return conversationHistory.map(m => {
+            const speaker = m.role === 'user' ? 'Technician' : 'AMPM POS Troubleshooting Assistant';
+            return `### ${speaker}\n${m.content}\n`;
+        }).join('\n---\n\n');
+    }
+
+    // Generate Shareable URL Hash (#share=...)
+    function generateShareLink() {
+        const payload = {
+            v: 1,
+            ts: Date.now(),
+            history: conversationHistory
+        };
+        const jsonStr = JSON.stringify(payload);
+        const encoded = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (match, p1) => {
+            return String.fromCharCode('0x' + p1);
+        }));
+        return window.location.origin + window.location.pathname + '#share=' + encodeURIComponent(encoded);
+    }
+
+    // Load and Render Shared Conversation from URL Hash
+    function loadSharedConversationFromHash() {
+        const hash = window.location.hash;
+        if (!hash || !hash.includes('#share=')) return;
+        const encodedPart = hash.split('#share=')[1];
+        if (!encodedPart) return;
+
+        try {
+            const rawB64 = decodeURIComponent(encodedPart);
+            const decodedStr = decodeURIComponent(Array.prototype.map.call(atob(rawB64), (c) => {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            const data = JSON.parse(decodedStr);
+            if (data && Array.isArray(data.history) && data.history.length > 0) {
+                activateChatMode();
+                if (messagesContainer) {
+                    messagesContainer.innerHTML = '';
+                    
+                    // Subtle info banner (NO duplicate "Start New Chat" button, existing header button is used)
+                    const banner = document.createElement('div');
+                    banner.className = 'shared-chat-notice';
+                    banner.innerHTML = '<span>🔗 <strong>Viewing Shared Troubleshooting Session</strong> (Use "+ New Chat" above to start a fresh chat)</span>';
+                    messagesContainer.appendChild(banner);
+
+                    conversationHistory = [];
+                    data.history.forEach(msg => {
+                        conversationHistory.push({ role: msg.role, content: msg.content });
+                        appendMessage(msg.role, msg.content, msg.citations || [], msg.provider || '');
+                    });
+
+                    messagesContainer.classList.remove('hidden');
+                }
+                showToast('Shared conversation loaded');
+            }
+        } catch (err) {
+            console.warn('Failed to load shared conversation from hash:', err);
+        }
+    }
 
     function appendMessage(sender, text, citations = [], providerUsed = '', isWebFallback = false) {
         const msgId = 'msg-' + Date.now();
@@ -930,6 +1049,32 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sender === 'assistant' && text && !text.includes('📄 *Uploading') && !text.includes('🔒 **Authentication Required')) {
             htmlContent += `
                 <div class="feedback-toolbar" id="fb-${msgId}">
+                    <button type="button" class="msg-action-btn copy-msg-btn" title="Copy response text" aria-label="Copy response">
+                        <svg class="copy-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    </button>
+                    <div class="msg-dropdown-container">
+                        <button type="button" class="msg-action-btn dots-msg-btn" title="More options" aria-label="More options">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                                <circle cx="5" cy="12" r="2"></circle>
+                                <circle cx="12" cy="12" r="2"></circle>
+                                <circle cx="19" cy="12" r="2"></circle>
+                            </svg>
+                        </button>
+                        <div class="msg-dropdown-menu hidden">
+                            <button type="button" class="msg-dropdown-item share-chat-btn">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+                                <span>Share Conversation</span>
+                            </button>
+                            <button type="button" class="msg-dropdown-item copy-all-btn">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+                                <span>Copy Entire Chat</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="action-divider"></div>
                     <button type="button" class="feedback-btn fb-thumbs-up" title="Helpful answer">👍 Helpful</button>
                     <button type="button" class="feedback-btn fb-thumbs-down" title="Not helpful">👎 Not Helpful</button>
                     <button type="button" class="feedback-btn btn-resolved fb-resolved" title="Mark as confirmed fix in knowledge base">⭐ Resolved My Issue</button>
@@ -943,6 +1088,71 @@ document.addEventListener('DOMContentLoaded', () => {
         row.appendChild(bubble);
 
         if (sender === 'assistant') {
+            // Copy Message Button Handler
+            const copyBtn = bubble.querySelector('.copy-msg-btn');
+            if (copyBtn) {
+                copyBtn.addEventListener('click', async () => {
+                    const ok = await copyToClipboard(text);
+                    if (ok) {
+                        copyBtn.classList.add('copied');
+                        copyBtn.innerHTML = `
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                        `;
+                        showToast('✓ Response copied to clipboard!');
+                        setTimeout(() => {
+                            copyBtn.classList.remove('copied');
+                            copyBtn.innerHTML = `
+                                <svg class="copy-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                            `;
+                        }, 2000);
+                    }
+                });
+            }
+
+            // 3-Dots Dropdown Menu Handlers
+            const dotsBtn = bubble.querySelector('.dots-msg-btn');
+            const dropdownMenu = bubble.querySelector('.msg-dropdown-menu');
+            if (dotsBtn && dropdownMenu) {
+                dotsBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    document.querySelectorAll('.msg-dropdown-menu').forEach(m => {
+                        if (m !== dropdownMenu) m.classList.add('hidden');
+                    });
+                    dropdownMenu.classList.toggle('hidden');
+                });
+
+                const shareBtn = dropdownMenu.querySelector('.share-chat-btn');
+                if (shareBtn) {
+                    shareBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        dropdownMenu.classList.add('hidden');
+                        const shareUrl = generateShareLink();
+                        const ok = await copyToClipboard(shareUrl);
+                        if (ok) {
+                            showToast('🔗 Share link copied to clipboard!');
+                        }
+                    });
+                }
+
+                const copyAllBtn = dropdownMenu.querySelector('.copy-all-btn');
+                if (copyAllBtn) {
+                    copyAllBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        dropdownMenu.classList.add('hidden');
+                        const formattedChat = getFormattedConversation();
+                        const ok = await copyToClipboard(formattedChat);
+                        if (ok) {
+                            showToast('📋 Entire conversation copied to clipboard!');
+                        }
+                    });
+                }
+            }
+
             const fbToolbar = bubble.querySelector('.feedback-toolbar');
             if (fbToolbar) {
                 const btnUp = fbToolbar.querySelector('.fb-thumbs-up');
@@ -970,7 +1180,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 answer: text,
                                 provider: providerUsed || providerSelect.value,
                                 feedback_type: type,
-                                category: categorySelect.value || "General"
+                                category: categorySelect ? (categorySelect.value || "General") : "General"
                             })
                         });
 
@@ -1088,4 +1298,24 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
     }
+
+    // Dismiss 3-dots dropdowns on outside click or Escape
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.msg-dropdown-container')) {
+            document.querySelectorAll('.msg-dropdown-menu').forEach(m => m.classList.add('hidden'));
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.msg-dropdown-menu').forEach(m => m.classList.add('hidden'));
+        }
+    });
+
+    window.addEventListener('hashchange', () => {
+        loadSharedConversationFromHash();
+    });
+
+    // Check for shared conversation on startup
+    loadSharedConversationFromHash();
 });
