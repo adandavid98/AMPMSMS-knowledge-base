@@ -926,15 +926,63 @@ document.addEventListener('DOMContentLoaded', () => {
         return success;
     }
 
-    // Format Entire Conversation as Markdown Text
+    // Convert alphanumeric characters to Unicode Mathematical Sans-Serif Bold
+    function toUnicodeBold(str) {
+        if (!str) return '';
+        return str.replace(/[A-Za-z0-9]/g, ch => {
+            const code = ch.charCodeAt(0);
+            if (code >= 65 && code <= 90) {
+                return String.fromCodePoint(0x1D5D4 + (code - 65));
+            } else if (code >= 97 && code <= 122) {
+                return String.fromCodePoint(0x1D5EE + (code - 97));
+            } else if (code >= 48 && code <= 57) {
+                return String.fromCodePoint(0x1D7EC + (code - 48));
+            }
+            return ch;
+        });
+    }
+
+    // Clean Markdown for Clipboard with Unicode Bold
+    function cleanTextForClipboard(rawText) {
+        if (!rawText) return '';
+        let clean = rawText;
+
+        // Strip inline citations like (Source: ...) or (Source #1: ...)
+        clean = clean.replace(/\s*\(\s*Source(?:\s*#\d+)?\s*:\s*.*?\)/gi, '');
+
+        // Remove horizontal divider lines (--- or *** or ___)
+        clean = clean.replace(/^[ \t]*(---|[*]{3,}|_{3,})[ \t]*$/gm, '');
+
+        // Convert headers (### Header) to Unicode bold
+        clean = clean.replace(/^#{1,6}\s+(.+)$/gm, (match, p1) => toUnicodeBold(p1.trim()));
+
+        // Convert bold syntax **text** and __text__ to Unicode bold
+        clean = clean.replace(/\*\*(.*?)\*\*/gs, (match, p1) => toUnicodeBold(p1));
+        clean = clean.replace(/__(.*?)__/gs, (match, p1) => toUnicodeBold(p1));
+
+        // Convert bullet list markers (* or +) at line starts to standard dashes (-)
+        clean = clean.replace(/^([ \t]*)[*+](?=\s)/gm, '$1-');
+
+        // Remove any leftover single italic asterisks (*italic*)
+        clean = clean.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '$1');
+
+        // Clean up redundant blank lines
+        clean = clean.replace(/\n{3,}/g, '\n\n').trim();
+
+        return clean;
+    }
+
+    // Format Entire Conversation as Clean Plain Text with Unicode Bold Headers
     function getFormattedConversation() {
         if (!conversationHistory || conversationHistory.length === 0) {
             return 'No conversation history found.';
         }
         return conversationHistory.map(m => {
             const speaker = m.role === 'user' ? 'Technician' : 'AMPM POS Troubleshooting Assistant';
-            return `### ${speaker}\n${m.content}\n`;
-        }).join('\n---\n\n');
+            const speakerTitle = toUnicodeBold(speaker);
+            const contentClean = cleanTextForClipboard(m.content);
+            return `${speakerTitle}\n${contentClean}\n`;
+        }).join('\n' + '─'.repeat(40) + '\n\n');
     }
 
     // Generate Shareable URL Hash (#share=...)
@@ -1096,7 +1144,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const copyBtn = bubble.querySelector('.copy-msg-btn');
             if (copyBtn) {
                 copyBtn.addEventListener('click', async () => {
-                    const ok = await copyToClipboard(text);
+                    const cleanText = cleanTextForClipboard(text);
+                    const ok = await copyToClipboard(cleanText);
                     if (ok) {
                         copyBtn.classList.add('copied');
                         copyBtn.innerHTML = `
